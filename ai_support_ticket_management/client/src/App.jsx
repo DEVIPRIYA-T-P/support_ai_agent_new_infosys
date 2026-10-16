@@ -1,0 +1,1696 @@
+import { useEffect, useState } from "react";
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  Link,
+  NavLink,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
+
+import { AuthProvider } from "./context/AuthContext";
+import { useAuth } from "./context/AuthContext";
+import ProtectedRoute from "./components/ProtectedRoute";
+import { getAllTickets, getDepartmentAgentsList, updateAgentAvailabilityApi, isUserDeleted, getAgentTicketSummary, fetchAndSyncAllTickets, isTicketAssignedToAgent } from "./services/ticketService";
+import { storage, STORAGE_KEYS } from "./services/storageService";
+
+import LoginPage from "./pages/auth/LoginPage";
+import RegisterPage from "./pages/RegisterPage";
+
+import NewTicketPage from "./pages/customer/NewTicketPage";
+import MyTicketsPage from "./pages/customer/MyTicketsPage";
+import CustomerTicketDetails from "./pages/customer/CustomerTicketDetails";
+import SelfHelpPage from "./pages/customer/SelfHelpPage";
+
+import AgentDashboard from "./pages/agent/AgentDashboard";
+import WorkQueuePage from "./pages/agent/WorkQueuePage";
+import AgentTicketDetails from "./pages/agent/AgentTicketDetails";
+import AgentAllTicketsPage from "./pages/agent/AgentAllTicketsPage";
+import AiReviewQueuePage from "./pages/agent/AiReviewQueuePage";
+import ValidateAiSolutionPage from "./pages/agent/ValidateAiSolutionPage";
+
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import UsersPage from "./pages/admin/UsersPage";
+import AdminConfigPage from "./pages/admin/AdminConfigPage";
+import KnowledgeBasePage from "./pages/admin/KnowledgeBasePage";
+import MasterDataPage from "./pages/admin/MasterDataPage";
+import IntegrationsPage from "./pages/admin/IntegrationsPage";
+import AIEmailAutomationPage from "./pages/admin/AIEmailAutomationPage";
+import AiAgentWorkbench from "./pages/agent/AiAgentWorkbench";
+import JiraCloudPortal from "./pages/jira/JiraCloudPortal";
+
+import ManagerLayout from "./pages/manager/ManagerLayout";
+import ManagerDashboard from "./pages/manager/ManagerDashboard";
+import ManagerQueueAndAssignmentPage from "./pages/manager/ManagerQueueAndAssignmentPage";
+import ManagerSlaAndEscalationsPage from "./pages/manager/ManagerSlaAndEscalationsPage";
+import ManagerAnalyticsPages from "./pages/manager/ManagerAnalyticsPages";
+import AgentDirectoryModal from "./components/AgentDirectoryModal";
+import AgentDetailsDrawer from "./components/AgentDetailsDrawer";
+import AgentTaskView from "./pages/agent/AgentTaskView";
+import ErrorBoundary from "./components/ErrorBoundary";
+import {
+  FiGrid,
+  FiList,
+  FiInbox,
+  FiShield,
+  FiCpu,
+  FiUsers,
+  FiClock,
+  FiBookOpen,
+  FiBarChart2,
+  FiActivity,
+  FiShare2,
+  FiSliders,
+  FiGitPullRequest,
+  FiLogOut,
+  FiCheck,
+  FiX,
+  FiLayers,
+  FiSearch,
+  FiExternalLink,
+  FiArrowLeft,
+  FiMail,
+} from "react-icons/fi";
+
+function initials(name) {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/);
+  return parts.length >= 2
+    ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    : parts[0].slice(0, 2).toUpperCase();
+}
+
+/* =====================================================
+   CUSTOMER LAYOUT
+===================================================== */
+
+function CustomerLayout({ children }) {
+  const { logout, user } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login", { replace: true });
+  };
+
+  return (
+    <div className="sp-shell">
+      <header className="sp-portal-nav">
+        <div className="sp-portal-links">
+          <Link to="/portal/tickets" className="sp-logo"><span className="sp-logo-mark">SP</span><span className="sp-logo-name">SupportPilot</span></Link>
+          <Link to="/portal/tickets">My tickets</Link>
+          <Link to="/portal/tickets/new">Raise a ticket</Link>
+          <Link to="/portal/self-help">Self-help</Link>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-slate-600 font-medium hidden sm:block">{user?.name || user?.username}</span>
+          <button onClick={handleLogout} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition cursor-pointer">Logout</button>
+          <div className="sp-avatar" title={user?.name}>{initials(user?.name)}</div>
+        </div>
+      </header>
+      <main className="sp-portal-main">
+        {children}
+      </main>
+    </div>
+  );
+}
+
+/* =====================================================
+   AGENT LAYOUT & DEPARTMENT SWITCHER (SYNCED WITH ADMIN USERS)
+===================================================== */
+
+function AgentLayout({ children }) {
+  const { logout, login, fastSwitchUser, user, updateUser } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [ticketCounts, setTicketCounts] = useState({ all: 0, open: 0 });
+  const [selectedDeptFilter, setSelectedDeptFilter] = useState("ALL");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showAllAgentsModal, setShowAllAgentsModal] = useState(false);
+  const [switchingEmail, setSwitchingEmail] = useState(null);
+  const [switchNotice, setSwitchNotice] = useState(null);
+  const [agentsList, setAgentsList] = useState(() => getDepartmentAgentsList());
+  const [inspectingAgent, setInspectingAgent] = useState(null);
+  const [inspectingTab, setInspectingTab] = useState("hold");
+  const [allTickets, setAllTickets] = useState(() => getAllTickets());
+
+  useEffect(() => {
+    fetchAndSyncAllTickets().then((res) => {
+      if (res) setAllTickets(res);
+    });
+    const handleSyncTickets = () => {
+      setAllTickets(getAllTickets());
+    };
+    window.addEventListener("storage", handleSyncTickets);
+    window.addEventListener("supportpilot_tickets_changed", handleSyncTickets);
+    return () => {
+      window.removeEventListener("storage", handleSyncTickets);
+      window.removeEventListener("supportpilot_tickets_changed", handleSyncTickets);
+    };
+  }, []);
+
+  const getAgentTicketCounts = (agent) => {
+    if (!agent) return { hold: 0, incomplete: 0, total: 0 };
+    const summary = getAgentTicketSummary(agent, allTickets);
+    return { hold: summary.hold, incomplete: summary.pending, total: summary.total };
+  };
+
+  useEffect(() => {
+    const handleSync = () => {
+      setAgentsList(getDepartmentAgentsList());
+      if (user && isUserDeleted(user)) {
+        logout();
+        navigate("/login", { replace: true });
+      }
+    };
+    window.addEventListener("supportpilot_users_changed", handleSync);
+    window.addEventListener("supportpilot_user_deleted", handleSync);
+    window.addEventListener("storage", handleSync);
+    return () => {
+      window.removeEventListener("supportpilot_users_changed", handleSync);
+      window.removeEventListener("supportpilot_user_deleted", handleSync);
+      window.removeEventListener("storage", handleSync);
+    };
+  }, [user]);
+
+  useEffect(() => {
+    const tickets = getAllTickets();
+    const myOpen = tickets.filter(
+      (t) =>
+        isTicketAssignedToAgent(t, user) &&
+        !["Resolved", "Closed", "RESOLVED", "CLOSED"].includes(t.status)
+    );
+    setTicketCounts({ all: tickets.length, open: myOpen.length });
+    setAllTickets(tickets);
+  }, [location.pathname, user?.email, user?.id]);
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login", { replace: true });
+  };
+
+  const isCurrentAgent = (ag) => {
+    if (!user) return false;
+    const userEmail = (user.email || "").toLowerCase().trim();
+    const username = (user.username || "").toLowerCase().trim();
+    const userName = (user.name || "").toLowerCase().trim();
+    const agEmail = ag.email.toLowerCase().trim();
+    const agName = ag.name.toLowerCase().trim();
+
+    return (
+      userEmail === agEmail ||
+      username === agEmail ||
+      username === agName ||
+      userName === agName
+    );
+  };
+
+  const handleSwitchAgent = async (ag) => {
+    if (isCurrentAgent(ag) || switchingEmail) return;
+    setSwitchingEmail(ag.email);
+    try {
+      if (fastSwitchUser) {
+        await fastSwitchUser(ag, ag.role || (ag.department === "Admin" ? "admin" : "agent"));
+      } else {
+        await login(ag.email, "password123", ag.role || (ag.department === "Admin" ? "admin" : "agent"));
+      }
+      setSwitchNotice(`Switched to ${ag.name} (${ag.department})`);
+      setTimeout(() => setSwitchNotice(null), 3500);
+      if (showAllAgentsModal) setShowAllAgentsModal(false);
+
+      if (ag.department === "Admin" || ag.role?.toLowerCase() === "admin") {
+        navigate("/admin");
+      } else {
+        navigate("/dashboard");
+      }
+    } catch (err) {
+      console.error("Agent switch error:", err);
+      setSwitchNotice(`Failed to switch to ${ag.name}`);
+      setTimeout(() => setSwitchNotice(null), 3500);
+    } finally {
+      setSwitchingEmail(null);
+    }
+  };
+
+  const currentDeptAgent = agentsList.find((ag) => isCurrentAgent(ag));
+  const currentDepartment = user?.department || currentDeptAgent?.department || "IT";
+
+  const deptCounts = {
+    ALL: agentsList.length,
+    IT: agentsList.filter((a) => a.department === "IT").length,
+    HR: agentsList.filter((a) => a.department === "HR").length,
+    Finance: agentsList.filter((a) => a.department === "Finance").length,
+    Admin: agentsList.filter((a) => a.department === "Admin").length,
+  };
+
+  const filteredAgents = agentsList.filter((ag) => {
+    if (selectedDeptFilter !== "ALL" && ag.department !== selectedDeptFilter) return false;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      const matchName = (ag.name || "").toLowerCase().includes(q);
+      const matchEmail = (ag.email || "").toLowerCase().includes(q);
+      const matchSpecialty = (ag.specialty || "").toLowerCase().includes(q);
+      const matchDept = (ag.department || "").toLowerCase().includes(q);
+      const matchTitle = (ag.title || "").toLowerCase().includes(q);
+      return matchName || matchEmail || matchSpecialty || matchDept || matchTitle;
+    }
+    return true;
+  });
+
+  const isAgentTaskView = location.pathname.startsWith("/agent/tasks/") || (location.pathname.startsWith("/agent/") && !location.pathname.includes("/dashboard"));
+  const selectedAgentParam = isAgentTaskView ? decodeURIComponent(location.pathname.split("/").pop()) : null;
+  const selectedAgentObj = selectedAgentParam
+    ? agentsList.find(
+        (ag) =>
+          String(ag.name || "").toLowerCase() === selectedAgentParam.toLowerCase() ||
+          String(ag.username || "").toLowerCase() === selectedAgentParam.toLowerCase() ||
+          String(ag.id || "").toLowerCase() === selectedAgentParam.toLowerCase() ||
+          String(ag.email || "").toLowerCase() === selectedAgentParam.toLowerCase()
+      ) || { name: selectedAgentParam, department: "IT", specialty: "Support Specialist", availabilityStatus: "AVAILABLE" }
+    : null;
+
+  const pageMeta = isAgentTaskView
+    ? ["Staff Directory", `${selectedAgentObj?.name || "Specialist"}'s Task View`]
+    : location.pathname === "/dashboard"
+    ? ["Overview", "Dashboard"]
+    : location.pathname === "/tickets/queue"
+      ? ["Tickets / Queue", "My queue"]
+      : location.pathname.startsWith("/ai-agent")
+        ? ["AI Operations", "AI Agent Workbench"]
+        : location.pathname.startsWith("/tickets/")
+          ? [`Tickets / ${location.pathname.split("/").pop()}`, "Ticket detail"]
+          : ["Tickets", "All tickets"];
+
+  const pendingReviewCount = allTickets.filter((t) => {
+    const s = String(t.status || "").toUpperCase();
+    return s === "PENDING_AGENT_REVIEW" || s === "AI_RESOLUTION_READY" || s.includes("REVIEW");
+  }).length;
+
+  const navigation = [
+    ["/dashboard", FiGrid, "Dashboard", null],
+    ["/tickets", FiList, "All Tickets", ticketCounts.all],
+    ["/tickets/queue", FiInbox, "My Queue / Assigned", ticketCounts.open],
+    ["/tickets/ai-review", FiShield, "AI Review Queue", pendingReviewCount],
+    ["/ai-agent/workbench", FiCpu, "AI Suggestions", null],
+    ["/jira", FiShare2, "Jira Sync", null],
+  ];
+
+  const userInitials = initials(user?.name);
+  const displayName = user?.name || user?.username || "Agent";
+
+  const getAvailabilityDot = (status) => {
+    switch (String(status || "").toUpperCase()) {
+      case "BUSY":
+        return "bg-amber-400";
+      case "UNAVAILABLE":
+        return "bg-orange-400";
+      case "INACTIVE":
+        return "bg-slate-400";
+      case "AVAILABLE":
+      default:
+        return "bg-emerald-400";
+    }
+  };
+
+  const AGENT_COLORS = [
+    "bg-blue-600",
+    "bg-violet-600",
+    "bg-emerald-600",
+    "bg-rose-500",
+    "bg-amber-500",
+    "bg-cyan-600",
+    "bg-indigo-600",
+    "bg-pink-500",
+    "bg-teal-600",
+    "bg-orange-500",
+  ];
+
+  const getAgentColor = (name) => {
+    if (!name) return AGENT_COLORS[0];
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return AGENT_COLORS[Math.abs(hash) % AGENT_COLORS.length];
+  };
+
+  const getAvailabilityLabel = (status) => {
+    switch (String(status || "").toUpperCase()) {
+      case "BUSY":
+        return "Busy";
+      case "UNAVAILABLE":
+        return "Unavailable";
+      case "INACTIVE":
+        return "Inactive";
+      case "AVAILABLE":
+      default:
+        return "Working / Available";
+    }
+  };
+
+  const handleGlobalAvailabilityChange = async (newStatus) => {
+    if (updateUser) {
+      updateUser({
+        availability_status: newStatus,
+        availabilityStatus: newStatus,
+      });
+    }
+
+    try {
+      const storedUsers = storage.get(STORAGE_KEYS.users, []);
+      if (Array.isArray(storedUsers) && user?.email) {
+        const uEmail = user.email.toLowerCase().trim();
+        const updated = storedUsers.map((u) => {
+          if (u.email?.toLowerCase().trim() === uEmail || u.id === user?.id) {
+            return { ...u, availabilityStatus: newStatus, availability_status: newStatus };
+          }
+          return u;
+        });
+        storage.set(STORAGE_KEYS.users, updated);
+        window.dispatchEvent(new CustomEvent("supportpilot_users_changed", { detail: updated }));
+      }
+    } catch (e) {
+      console.warn("Error updating local users store:", e);
+    }
+
+    try {
+      await updateAgentAvailabilityApi(newStatus, user?.id, user?.email);
+    } catch (e) {}
+
+    const label = getAvailabilityLabel(newStatus);
+    setSwitchNotice(`My Status updated to ${label}`);
+    setTimeout(() => setSwitchNotice(null), 3000);
+  };
+
+  return (
+    <div className="sp-agent-shell">
+      <aside className="sp-agent-sidebar">
+        {/* LOGO */}
+        <Link to="/dashboard" className="sp-sidebar-logo">
+          <span className="sp-logo-mark">SP</span>
+          <div>
+            <span className="sp-logo-name">SupportPilot</span>
+            <span className="sp-sidebar-sub">AGENT WORKSPACE</span>
+          </div>
+        </Link>
+
+        {/* SCROLLABLE SIDEBAR BODY */}
+        <div className="sp-sidebar-scrollable">
+          {/* WORK QUEUE NAVIGATION */}
+          <nav className="sp-sidebar-nav">
+            <div className="sp-nav-heading">Work Queue</div>
+            {navigation.map(([to, IconComp, label, count]) => (
+              <NavLink end key={to} to={to} className={({ isActive }) => isActive ? "active" : ""}>
+                <IconComp className="w-4 h-4 shrink-0 text-slate-500" />
+                <span>{label}</span>
+                {count !== null && <span className="sp-sidebar-count">{count}</span>}
+              </NavLink>
+            ))}
+          </nav>
+
+          {/* NOTIFICATION BANNER */}
+          {switchNotice && (
+            <div className="mx-3 mt-3 mb-1 rounded-lg bg-emerald-50 border border-emerald-200 p-2 text-center text-[11px] font-semibold text-emerald-800 shadow-xs animate-fade-in">
+              {switchNotice}
+            </div>
+          )}
+
+          {/* DEPARTMENT AGENTS SWITCHER */}
+          <div className="mt-4 px-3">
+            <div className="flex items-center justify-between px-1 mb-2">
+              <div className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-blue-600" />
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                  Staff Directory
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAllAgentsModal(true)}
+                className="text-[10px] font-semibold text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-md transition shadow-xs flex items-center gap-1 cursor-pointer"
+                title="Open full department agents directory"
+              >
+                <FiUsers className="w-3 h-3" />
+                <span>Directory</span>
+              </button>
+            </div>
+
+            {/* IF IN AGENT TASK VIEW: SHOW RETURN TO DASHBOARD SHORTCUT */}
+            {isAgentTaskView && (
+              <div className="mb-2">
+                <button
+                  type="button"
+                  onClick={() => navigate("/dashboard")}
+                  className="w-full py-1.5 px-2.5 rounded-xl bg-slate-100 border border-slate-300 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-700 text-slate-700 font-bold text-[11px] transition shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer group"
+                  title="Return to Main Dashboard"
+                >
+                  <FiArrowLeft className="w-3.5 h-3.5 text-slate-500 group-hover:text-blue-700 group-hover:-translate-x-0.5 transition-transform" />
+                  <span>← Return to Main Dashboard</span>
+                </button>
+              </div>
+            )}
+
+            {/* QUICK SEARCH */}
+            <div className="relative mb-2">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search agent (Yogitha, Prem...)"
+                className="w-full rounded-lg bg-white border border-slate-300 px-2.5 py-1.5 text-[11px] text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 hover:text-slate-700 cursor-pointer"
+                >
+                  <FiX className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+
+            {/* DEPARTMENT FILTER TABS */}
+            <div className="grid grid-cols-5 gap-1 p-1 bg-slate-100 rounded-lg border border-slate-200 mb-2.5">
+              {[
+                { id: "ALL", label: "All", count: deptCounts.ALL },
+                { id: "IT", label: "IT", count: deptCounts.IT },
+                { id: "HR", label: "HR", count: deptCounts.HR },
+                { id: "Finance", label: "Fin", count: deptCounts.Finance },
+                { id: "Admin", label: "Adm", count: deptCounts.Admin },
+              ].map((tab) => {
+                const isActive = selectedDeptFilter === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setSelectedDeptFilter(tab.id)}
+                    className={`py-1 px-0.5 rounded-md text-[10px] font-semibold transition text-center cursor-pointer ${
+                      isActive
+                        ? "bg-blue-600 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/70"
+                    }`}
+                  >
+                    {tab.label} <span className="text-[9px] opacity-75">({tab.count})</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* AGENT CARDS LIST */}
+            <div className="space-y-1.5 max-h-[380px] overflow-y-auto pr-0.5">
+              {filteredAgents.length === 0 ? (
+                <div className="p-3 text-center text-xs text-slate-500 rounded-lg bg-slate-50 border border-slate-200">
+                  No agents found matching "{searchQuery}"
+                </div>
+              ) : (
+                filteredAgents.map((ag) => {
+                  const isCurrent = isCurrentAgent(ag);
+                  const isSelectedInView = isAgentTaskView && selectedAgentParam && (
+                    String(ag.name || "").toLowerCase() === selectedAgentParam.toLowerCase() ||
+                    String(ag.username || "").toLowerCase() === selectedAgentParam.toLowerCase() ||
+                    String(ag.id || "").toLowerCase() === selectedAgentParam.toLowerCase() ||
+                    String(ag.email || "").toLowerCase() === selectedAgentParam.toLowerCase()
+                  );
+                  const effectiveStatus = isCurrent
+                    ? (user?.availability_status || user?.availabilityStatus || ag.availabilityStatus)
+                    : ag.availabilityStatus;
+                  const isAvail = effectiveStatus === "AVAILABLE" || effectiveStatus === "Working / Available";
+                  const counts = getAgentTicketCounts(ag);
+
+                  return (
+                    <div
+                      key={ag.email}
+                      className={`w-full text-left rounded-xl p-2.5 transition-all flex items-center gap-2 border bg-white hover:border-slate-300 hover:bg-slate-50/80 text-slate-800 group ${
+                        isSelectedInView ? "border-blue-500 bg-blue-50/50 ring-1 ring-blue-400/40" : "border-slate-200"
+                      }`}
+                    >
+                      {/* CLICKABLE AGENT INFO: DIRECTLY OPENS AGENT DEDICATED TASK VIEW */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigate(`/agent/tasks/${encodeURIComponent(ag.name || ag.username || ag.id)}`);
+                        }}
+                        className="min-w-0 flex-1 flex items-center gap-2.5 text-left cursor-pointer"
+                        title={`Click to open ${ag.name}'s dedicated task view`}
+                      >
+                        {/* AVATAR WITH LIVE STATUS BEACON */}
+                        <div className="relative shrink-0">
+                          <div
+                            className={`h-8 w-8 rounded-lg ${getAgentColor(ag.name)} text-white font-bold text-xs flex items-center justify-center shadow-xs`}
+                          >
+                            {initials(ag.name)}
+                          </div>
+                          {isAvail ? (
+                            <span className="absolute -bottom-0.5 -right-0.5 flex h-2.5 w-2.5">
+                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 ring-1 ring-white" />
+                            </span>
+                          ) : (
+                            <span className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ${getAvailabilityDot(effectiveStatus)} ring-1 ring-white`} />
+                          )}
+                        </div>
+
+                            {/* AGENT INFO */}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="text-xs font-semibold truncate text-slate-900 flex items-center gap-1.5">
+                                  <span className="truncate group-hover:text-blue-600 transition-colors">{ag.name}</span>
+                                  {ag.isTeamLead && (
+                                    <span
+                                      className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-50 text-amber-700 border border-amber-300 font-bold shrink-0"
+                                      title="Team Lead"
+                                    >
+                                      Lead
+                                    </span>
+                                  )}
+                                </span>
+                                <span
+                                  className="text-[9px] font-bold px-1.5 py-0.2 rounded-md border bg-slate-100 text-slate-700 border-slate-300"
+                                >
+                                  {ag.deptBadge || ag.department}
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-slate-500 truncate flex items-center justify-between mt-0.5">
+                                <span className="truncate">{ag.specialty || ag.title}</span>
+                              </div>
+
+                              {/* REAL-TIME HOLD & INCOMPLETE TICKETS BADGES */}
+                              <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                                {counts.hold > 0 ? (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-0.5">
+                                    <span>{counts.hold} Hold</span>
+                                  </span>
+                                ) : (
+                                  <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">
+                                    0 Hold
+                                  </span>
+                                )}
+                                <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                                  {counts.incomplete} Pending
+                                </span>
+                              </div>
+                            </div>
+                          </button>
+
+                          {/* EXPLICIT DRAWER ACTION BUTTON */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setInspectingAgent(ag);
+                              setInspectingTab(counts.hold > 0 ? "hold" : "incomplete");
+                            }}
+                            className="shrink-0 p-1.5 rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition cursor-pointer"
+                            title={`Open ${ag.name}'s specialist profile drawer`}
+                          >
+                            <FiExternalLink className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+        </div>
+
+        {/* SIDEBAR FOOTER (CURRENT LOGGED-IN AGENT) */}
+        <div className="sp-sidebar-footer">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <div className="sp-avatar sp-agent-avatar shrink-0" title={displayName}>
+                {userInitials}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-semibold text-slate-900 truncate">{displayName}</div>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className={`h-2 w-2 rounded-full ${getAvailabilityDot(user?.availability_status || user?.availabilityStatus)} shrink-0`} />
+                  <select
+                    value={user?.availability_status || user?.availabilityStatus || "AVAILABLE"}
+                    onChange={(e) => handleGlobalAvailabilityChange(e.target.value)}
+                    className="bg-white text-slate-700 text-[10px] font-medium py-0.5 px-1 rounded border border-slate-300 outline-none cursor-pointer w-full truncate"
+                    title="Change your availability status"
+                  >
+                    <option value="AVAILABLE">Available</option>
+                    <option value="BUSY">Busy</option>
+                    <option value="UNAVAILABLE">Unavailable</option>
+                    <option value="INACTIVE">Inactive</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleLogout}
+              title="Sign Out"
+              className="rounded p-1.5 text-xs text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition cursor-pointer"
+            >
+              <FiLogOut className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      {/* MAIN VIEWPORT */}
+      <main className="sp-agent-main">
+        <header className="sp-agent-topbar">
+          <div>
+            <div className="sp-breadcrumb">{pageMeta[0]}</div>
+            <h1>{pageMeta[1]}</h1>
+          </div>
+          <div className="flex items-center gap-3">
+            {/* CURRENT ACTIVE AGENT & INTERACTIVE MY STATUS CONTROLLER */}
+            <div className="flex items-center gap-2 rounded-xl bg-white border border-slate-200 px-3 py-1.5 shadow-xs">
+              <span className={`h-2.5 w-2.5 rounded-full ${getAvailabilityDot(user?.availability_status || user?.availabilityStatus)} shrink-0`} />
+              <div className="hidden md:flex flex-col text-left mr-1">
+                <span className="text-xs font-bold text-slate-800 leading-tight truncate max-w-[120px]">{displayName}</span>
+                <span className="text-[10px] text-slate-500 font-semibold">{currentDepartment} Dept</span>
+              </div>
+              <div className="flex items-center gap-1.5 pl-1.5 border-l border-slate-200">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 hidden sm:inline">Status:</span>
+                <select
+                  value={user?.availability_status || user?.availabilityStatus || "AVAILABLE"}
+                  onChange={(e) => handleGlobalAvailabilityChange(e.target.value)}
+                  className="rounded-lg bg-slate-50 text-slate-800 font-semibold text-xs py-1 px-2 border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                  title="Change your availability status"
+                >
+                  <option value="AVAILABLE">Working / Available</option>
+                  <option value="BUSY">Busy</option>
+                  <option value="UNAVAILABLE">Not Working / Unavailable</option>
+                  <option value="INACTIVE">Inactive</option>
+                </select>
+              </div>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+            >
+              Logout
+            </button>
+            <div className="sp-avatar sp-agent-avatar" title={displayName}>
+              {userInitials}
+            </div>
+          </div>
+        </header>
+        <div className="sp-content">
+          {children}
+        </div>
+      </main>      {/* ALL DEPARTMENTS & AGENTS DIRECTORY MODAL */}
+      <AgentDirectoryModal
+        isOpen={showAllAgentsModal}
+        onClose={() => setShowAllAgentsModal(false)}
+        agents={agentsList}
+        allTickets={allTickets}
+        onSelectAgent={(ag) => {
+          navigate(`/agent/tasks/${encodeURIComponent(ag.name || ag.username || ag.id)}`);
+          setShowAllAgentsModal(false);
+        }}
+        onSwitchUser={handleSwitchAgent}
+        currentUser={user}
+      />
+
+      {/* PROFESSIONAL AGENT DETAILS DRAWER */}
+      <AgentDetailsDrawer
+        agent={inspectingAgent}
+        isOpen={Boolean(inspectingAgent)}
+        onClose={() => setInspectingAgent(null)}
+        allTickets={allTickets}
+        onTicketAssigned={() => setAllTickets(getAllTickets())}
+      />
+    </div>
+  );
+}
+
+/* =====================================================
+   ADMIN LAYOUT
+===================================================== */
+
+function AdminLayout({ children }) {
+  const { logout, user } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login", { replace: true });
+  };
+
+  const adminNav = [
+    { to: "/admin", icon: FiGrid, label: "Dashboard" },
+    { to: "/tickets", icon: FiList, label: "All Tickets" },
+    { to: "/ai-agent/workbench", icon: FiCpu, label: "AI Agent Ops" },
+    { to: "/admin/master-data", icon: FiLayers, label: "Master Data" },
+    { to: "/admin/users", icon: FiUsers, label: "Users" },
+    { to: "/admin/routing", icon: FiGitPullRequest, label: "Routing Rules" },
+    { to: "/admin/sla", icon: FiClock, label: "SLA Policies" },
+    { to: "/admin/ai-settings", icon: FiSliders, label: "AI Settings" },
+    { to: "/admin/email-automation", icon: FiMail, label: "AI Email Automation" },
+    { to: "/knowledge", icon: FiBookOpen, label: "Knowledge Base" },
+    { to: "/integrations", icon: FiShare2, label: "Integrations" },
+    { to: "/analytics", icon: FiBarChart2, label: "Analytics" },
+    { to: "/admin/audit", icon: FiActivity, label: "Audit Logs" },
+  ];
+
+  const userInitials = initials(user?.name);
+  const displayName = user?.name || user?.username || "Admin";
+
+  return (
+    <div className="sp-admin-shell">
+      <aside className="sp-admin-sidebar">
+        <Link to="/admin" className="sp-sidebar-logo">
+          <span className="sp-logo-mark">SP</span>
+          <span>
+            <span className="sp-logo-name">SupportPilot</span>
+            <span className="sp-sidebar-sub">ADMIN MISSION CONTROL</span>
+          </span>
+        </Link>
+        <nav className="sp-sidebar-nav">
+          <div className="sp-nav-heading">Mission Control</div>
+          {adminNav.map(({ to, icon: IconComp, label }) => (
+            <NavLink
+              end
+              key={to}
+              to={to}
+              className={({ isActive }) => isActive ? "active" : ""}
+            >
+              <IconComp className="w-4 h-4 shrink-0 text-slate-500" />
+              <span>{label}</span>
+            </NavLink>
+          ))}
+        </nav>
+        <div className="sp-sidebar-footer">
+          <div className="flex items-center gap-2">
+            <div className="sp-avatar sp-admin-avatar" title={displayName}>{userInitials}</div>
+            <div>
+              <div className="text-xs font-semibold text-slate-900">{displayName}</div>
+              <div className="text-[10px] text-blue-600 font-medium">Administrator</div>
+            </div>
+          </div>
+        </div>
+      </aside>
+      <main className="sp-agent-main">
+        <header className="sp-admin-topbar">
+          <div>
+            <div className="sp-breadcrumb">Admin Console</div>
+            <h1>{adminNav.find((n) => n.to === location.pathname)?.label || "Admin"}</h1>
+          </div>
+          <div className="flex items-center gap-3">
+            <button onClick={handleLogout} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition cursor-pointer">Logout</button>
+            <div className="sp-avatar sp-admin-avatar" title={displayName}>{userInitials}</div>
+          </div>
+        </header>
+        <div className="sp-content">
+          {children}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function AdaptiveKnowledgePage() {
+  const { user } = useAuth();
+  if (user?.role === "manager") {
+    return (
+      <ManagerLayout>
+        <KnowledgeBasePage />
+      </ManagerLayout>
+    );
+  }
+  return (
+    <AdminLayout>
+      <KnowledgeBasePage />
+    </AdminLayout>
+  );
+}
+
+/* =====================================================
+   UNAUTHORIZED PAGE
+===================================================== */
+
+function HomePage() {
+  const { startFreshSession } = useAuth();
+  const navigate = useNavigate();
+
+  const handleStartFresh = (e) => {
+    e.preventDefault();
+    startFreshSession();
+    navigate("/login?fresh=true", { replace: true });
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-[#14532d] via-[#166534] to-[#0f2b1d] text-white">
+      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/15 text-lg font-bold shadow-inner">SP</div>
+          <span className="text-2xl font-bold tracking-tight">SupportPilot</span>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <Link
+            to="/login?fresh=true"
+            onClick={handleStartFresh}
+            className="rounded-full border border-white/30 px-4 py-2 text-sm font-medium hover:bg-white/10 transition"
+          >
+            Login
+          </Link>
+          <Link
+            to="/register"
+            className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-[#14532d] hover:bg-emerald-50 transition shadow-sm"
+          >
+            Create account
+          </Link>
+        </div>
+      </header>
+
+      <main className="mx-auto grid max-w-6xl gap-12 px-6 py-16 lg:grid-cols-2 lg:items-center">
+        <div>
+          <p className="mb-4 text-sm font-semibold uppercase tracking-[0.25em] text-emerald-100">Intelligent support operations</p>
+          <h1 className="text-5xl font-bold leading-tight tracking-tight">Support tickets made simple.</h1>
+          <p className="mt-6 max-w-xl text-lg text-emerald-50/90 leading-relaxed">
+            Manage customer requests, route work to agents, keep SLA promises, and power intelligent support operations from one workspace.
+          </p>
+
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <button
+              onClick={handleStartFresh}
+              className="rounded-xl bg-white px-6 py-3.5 font-semibold text-[#14532d] hover:bg-emerald-50 transition shadow-xl cursor-pointer text-center"
+            >
+              Get started
+            </button>
+
+            <Link
+              to="/register"
+              className="rounded-xl border border-white/30 px-6 py-3.5 font-semibold text-white hover:bg-white/10 transition text-center"
+            >
+              Create account
+            </Link>
+          </div>
+        </div>
+
+        <div className="rounded-[28px] border border-white/10 bg-white/10 p-6 shadow-2xl backdrop-blur-sm">
+          <div className="rounded-2xl bg-white/5 p-5">
+            <div className="mb-4 flex items-center justify-between text-sm text-emerald-100">
+              <span className="font-semibold">Live operations</span>
+              <span className="rounded-full bg-emerald-500/20 px-2.5 py-1 text-xs font-semibold text-emerald-100 border border-emerald-400/30">Healthy</span>
+            </div>
+            <div className="space-y-4">
+              <div className="rounded-xl bg-white/10 p-4 border border-white/5">
+                <p className="text-xs uppercase tracking-[0.2em] text-emerald-100">Open tickets</p>
+                <p className="mt-2 text-3xl font-bold">428</p>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div
+                  onClick={() => navigate("/login?fresh=true")}
+                  className="rounded-xl bg-white/10 p-4 border border-white/10 hover:bg-white/20 transition cursor-pointer"
+                  title="Click to sign in or get started as an Agent"
+                >
+                  <p className="text-xs uppercase tracking-[0.2em] text-emerald-100 flex items-center justify-between">
+                    <span>Agents</span>
+                    <span className="text-[10px] font-semibold text-emerald-200">Start →</span>
+                  </p>
+                  <p className="mt-2 text-2xl font-bold">24</p>
+                </div>
+                <div className="rounded-xl bg-white/10 p-4 border border-white/5">
+                  <p className="text-xs uppercase tracking-[0.2em] text-emerald-100">Avg. resolve</p>
+                  <p className="mt-2 text-2xl font-bold">2.4h</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function PlaceholderPage({ title, description }) {
+  return (
+    <div className="mx-auto max-w-3xl rounded-2xl border border-[#dfe5e1] bg-white p-8 shadow-sm">
+      <h1 className="text-3xl font-bold text-[#1c2430]">{title}</h1>
+      <p className="mt-4 text-[#4b5563]">{description}</p>
+      <Link to="/admin" className="mt-6 inline-block rounded-lg bg-[#14532d] px-6 py-3 font-semibold text-white hover:bg-[#0f2b1d]">Back to dashboard</Link>
+    </div>
+  );
+}
+
+function UnauthorizedPage() {
+  const { user, logout } = useAuth();
+  const targetHome = user?.role === "admin" ? "/admin" : user?.role === "manager" ? "/manager" : user?.role === "agent" ? "/dashboard" : "/portal/tickets";
+  const portalName = user?.role === "admin" ? "Admin Control Center" : user?.role === "manager" ? "Manager Portal" : user?.role === "agent" ? "Agent Workspace" : "Customer Portal";
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
+      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-900 shadow-xl">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 border border-amber-200">
+          <FiShield className="w-8 h-8" />
+        </div>
+
+        <h1 className="mt-5 text-xl font-bold text-slate-900 tracking-tight">
+          Restricted Resource
+        </h1>
+
+        <p className="mt-2 text-xs text-slate-500 leading-relaxed">
+          {user ? (
+            <>
+              You are currently logged in as <strong className="text-slate-800 font-semibold">{user.name || user.username}</strong> ({user.role?.toUpperCase()}). This specific section requires different authorization credentials.
+            </>
+          ) : (
+            "Authentication is required to access this system area."
+          )}
+        </p>
+
+        <div className="mt-6 flex flex-col gap-2.5">
+          {user ? (
+            <Link
+              to={targetHome}
+              className="w-full rounded-xl bg-emerald-600 px-5 py-3 text-xs font-bold text-white shadow-lg hover:bg-emerald-500 transition"
+            >
+              Return to Your {portalName}
+            </Link>
+          ) : (
+            <Link
+              to="/login"
+              className="w-full rounded-xl bg-emerald-600 px-5 py-3 text-xs font-bold text-white shadow-lg hover:bg-emerald-500 transition"
+            >
+              Sign In to Your Account
+            </Link>
+          )}
+
+          {user && (
+            <button
+              onClick={() => {
+                logout();
+                window.location.href = "/login";
+              }}
+              className="w-full rounded-xl bg-white/10 px-5 py-2.5 text-xs font-semibold text-slate-300 hover:bg-white/15 transition border border-white/10 cursor-pointer"
+            >
+              Switch Account / Sign Out
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TicketDetailDispatcher() {
+  const { user } = useAuth();
+  if (user?.role === "customer") {
+    return (
+      <ErrorBoundary>
+        <CustomerLayout>
+          <CustomerTicketDetails />
+        </CustomerLayout>
+      </ErrorBoundary>
+    );
+  }
+  return (
+    <ErrorBoundary>
+      <AgentLayout>
+        <AgentTicketDetails />
+      </AgentLayout>
+    </ErrorBoundary>
+  );
+}
+
+function AllTicketsRedirect() {
+  const { user } = useAuth();
+  if (user?.role === "customer") return <Navigate to="/portal/tickets" replace />;
+  if (user?.role === "manager") return <Navigate to="/manager/tickets" replace />;
+  return <Navigate to="/tickets" replace />;
+}
+
+function MyTicketsRedirect() {
+  const { user } = useAuth();
+  if (user?.role === "customer") return <Navigate to="/portal/tickets" replace />;
+  if (user?.role === "manager") return <Navigate to="/manager/tickets" replace />;
+  return <Navigate to="/tickets/queue" replace />;
+}
+
+/* =====================================================
+   APP
+===================================================== */
+
+export default function App() {
+  return (
+    <BrowserRouter>
+
+      <AuthProvider>
+
+        <Routes>
+
+          {/* =================================================
+              AUTH
+          ================================================= */}
+
+          <Route
+            path="/login"
+            element={<LoginPage />}
+          />
+
+          <Route
+            path="/register"
+            element={<RegisterPage />}
+          />
+
+          {/* =================================================
+              CUSTOMER
+          ================================================= */}
+
+          <Route
+            path="/portal/tickets/new"
+            element={
+              <ProtectedRoute
+                allowedRoles={["customer", "agent", "manager", "admin"]}
+              >
+                <CustomerLayout>
+                  <NewTicketPage />
+                </CustomerLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/portal/tickets"
+            element={
+              <ProtectedRoute
+                allowedRoles={["customer"]}
+              >
+                <CustomerLayout>
+                  <MyTicketsPage />
+                </CustomerLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/portal/self-help"
+            element={
+              <ProtectedRoute
+                allowedRoles={["customer"]}
+              >
+                <CustomerLayout>
+                  <SelfHelpPage />
+                </CustomerLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/portal/tickets/:id"
+            element={
+              <ProtectedRoute
+                allowedRoles={["customer", "admin", "agent", "manager"]}
+              >
+                <CustomerLayout>
+                  <CustomerTicketDetails />
+                </CustomerLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* =================================================
+              AGENT & TICKETS
+          ================================================= */}
+
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute
+                allowedRoles={["agent"]}
+              >
+                <AgentLayout>
+                  <AgentDashboard />
+                </AgentLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/agent/tasks/:agentName"
+            element={
+              <ProtectedRoute
+                allowedRoles={["agent", "admin", "manager"]}
+              >
+                <AgentLayout>
+                  <AgentTaskView />
+                </AgentLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/agent/:agentName"
+            element={
+              <ProtectedRoute
+                allowedRoles={["agent", "admin", "manager"]}
+              >
+                <AgentLayout>
+                  <AgentTaskView />
+                </AgentLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/tickets"
+            element={
+              <ProtectedRoute allowedRoles={["agent", "admin", "manager"]}>
+                <AgentLayout><AgentAllTicketsPage /></AgentLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/tickets/queue"
+            element={
+              <ProtectedRoute
+                allowedRoles={["agent", "admin", "manager"]}
+              >
+                <AgentLayout>
+                  <WorkQueuePage />
+                </AgentLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Milestone 4: AI Review Queue */}
+          <Route
+            path="/tickets/ai-review"
+            element={
+              <ProtectedRoute allowedRoles={["agent", "admin", "manager"]}>
+                <AgentLayout>
+                  <AiReviewQueuePage />
+                </AgentLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Open & Validate AI Solution Route */}
+          <Route
+            path="/tickets/:id/validate-ai"
+            element={
+              <ProtectedRoute allowedRoles={["agent", "admin", "manager"]}>
+                <AgentLayout>
+                  <ValidateAiSolutionPage />
+                </AgentLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/tickets/:id/validate"
+            element={
+              <ProtectedRoute allowedRoles={["agent", "admin", "manager"]}>
+                <AgentLayout>
+                  <ValidateAiSolutionPage />
+                </AgentLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/tickets/ai-review/:id"
+            element={
+              <ProtectedRoute allowedRoles={["agent", "admin", "manager"]}>
+                <AgentLayout>
+                  <ValidateAiSolutionPage />
+                </AgentLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/tickets/:id"
+            element={
+              <ProtectedRoute
+                allowedRoles={["agent", "admin", "manager", "customer"]}
+              >
+                <TicketDetailDispatcher />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Milestone 3 AI Agent Operations Workbench */}
+          <Route
+            path="/ai-agent/workbench"
+            element={
+              <ProtectedRoute
+                allowedRoles={["agent", "admin"]}
+              >
+                <AgentLayout>
+                  <AiAgentWorkbench />
+                </AgentLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/ai-agent/runs/:id"
+            element={
+              <ProtectedRoute
+                allowedRoles={["agent", "admin"]}
+              >
+                <AgentLayout>
+                  <AiAgentWorkbench />
+                </AgentLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* =================================================
+              SUPPORT MANAGER PORTAL (PDF SECTION 7.C)
+          ================================================= */}
+
+          <Route
+            path="/manager"
+            element={
+              <ProtectedRoute allowedRoles={["manager", "admin"]}>
+                <ManagerLayout>
+                  <ManagerDashboard />
+                </ManagerLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/manager/tickets"
+            element={
+              <ProtectedRoute allowedRoles={["manager", "admin"]}>
+                <ManagerLayout>
+                  <ManagerQueueAndAssignmentPage />
+                </ManagerLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/manager/queue"
+            element={
+              <ProtectedRoute allowedRoles={["manager", "admin"]}>
+                <ManagerLayout>
+                  <ManagerQueueAndAssignmentPage />
+                </ManagerLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/manager/assignment"
+            element={
+              <ProtectedRoute allowedRoles={["manager", "admin"]}>
+                <ManagerLayout>
+                  <ManagerQueueAndAssignmentPage />
+                </ManagerLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/manager/escalations"
+            element={
+              <ProtectedRoute allowedRoles={["manager", "admin"]}>
+                <ManagerLayout>
+                  <ManagerSlaAndEscalationsPage />
+                </ManagerLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/manager/sla"
+            element={
+              <ProtectedRoute allowedRoles={["manager", "admin"]}>
+                <ManagerLayout>
+                  <ManagerSlaAndEscalationsPage />
+                </ManagerLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/manager/agent-performance"
+            element={
+              <ProtectedRoute allowedRoles={["manager", "admin"]}>
+                <ManagerLayout>
+                  <ManagerAnalyticsPages />
+                </ManagerLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/manager/ai-performance"
+            element={
+              <ProtectedRoute allowedRoles={["manager", "admin"]}>
+                <ManagerLayout>
+                  <ManagerAnalyticsPages />
+                </ManagerLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/manager/reports"
+            element={
+              <ProtectedRoute allowedRoles={["manager", "admin"]}>
+                <ManagerLayout>
+                  <ManagerAnalyticsPages />
+                </ManagerLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/manager/notifications"
+            element={
+              <ProtectedRoute allowedRoles={["manager", "admin"]}>
+                <ManagerLayout>
+                  <ManagerAnalyticsPages />
+                </ManagerLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/manager/profile"
+            element={
+              <ProtectedRoute allowedRoles={["manager", "admin"]}>
+                <ManagerLayout>
+                  <ManagerAnalyticsPages />
+                </ManagerLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* =================================================
+              ADMIN
+          ================================================= */}
+
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute
+                allowedRoles={["admin"]}
+              >
+                <AdminLayout>
+                  <AdminDashboard />
+                </AdminLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/master-data"
+            element={
+              <ProtectedRoute
+                allowedRoles={["admin"]}
+              >
+                <AdminLayout>
+                  <MasterDataPage />
+                </AdminLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/users"
+            element={
+              <ProtectedRoute
+                allowedRoles={["admin"]}
+              >
+                <AdminLayout>
+                  <UsersPage />
+                </AdminLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/routing"
+            element={
+              <ProtectedRoute allowedRoles={["admin"]}>
+                <AdminLayout>
+                  <AdminConfigPage
+                    title="Routing Rules"
+                    description="Configure automatic ticket routing and assignments."
+                    storageKey="supportpilot_routing_rules"
+                    defaultValues={{
+                      defaultQueue: "L1 Support",
+                      highPriorityRouting: "Escalate to Level 2",
+                      roundRobin: "Enabled",
+                      assignmentRule: "Route by priority and department",
+                    }}
+                    fields={[
+                      { name: "defaultQueue", label: "Default queue", type: "text" },
+                      { name: "highPriorityRouting", label: "High priority routing", type: "text" },
+                      { name: "roundRobin", label: "Round robin", type: "select", options: [{ value: "Enabled", label: "Enabled" }, { value: "Disabled", label: "Disabled" }] },
+                      { name: "assignmentRule", label: "Assignment rule", type: "textarea", fullWidth: true },
+                    ]}
+                  />
+                </AdminLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/sla"
+            element={
+              <ProtectedRoute allowedRoles={["admin"]}>
+                <AdminLayout>
+                  <AdminConfigPage
+                    title="SLA Policies"
+                    description="Configure priority-based SLA targets and escalation settings."
+                    storageKey="supportpilot_sla_policies"
+                    defaultValues={{
+                      lowPriority: "24 hours",
+                      mediumPriority: "8 hours",
+                      highPriority: "4 hours",
+                      criticalPriority: "1 hour",
+                    }}
+                    fields={[
+                      { name: "lowPriority", label: "Low priority SLA", type: "text" },
+                      { name: "mediumPriority", label: "Medium priority SLA", type: "text" },
+                      { name: "highPriority", label: "High priority SLA", type: "text" },
+                      { name: "criticalPriority", label: "Critical priority SLA", type: "text" },
+                    ]}
+                  />
+                </AdminLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/ai-settings"
+            element={
+              <ProtectedRoute allowedRoles={["admin"]}>
+                <AdminLayout>
+                  <AdminConfigPage
+                    title="AI Settings"
+                    description="Configure AI confidence thresholds and retrieval settings."
+                    storageKey="supportpilot_ai_settings"
+                    defaultValues={{
+                      model: "gpt-4o-mini",
+                      confidenceThreshold: "0.82",
+                      retrievalMode: "Hybrid",
+                      responseStyle: "Concise and action-oriented",
+                    }}
+                    fields={[
+                      { name: "model", label: "AI model", type: "text" },
+                      { name: "confidenceThreshold", label: "Confidence threshold", type: "text" },
+                      { name: "retrievalMode", label: "Retrieval mode", type: "select", options: [{ value: "Hybrid", label: "Hybrid" }, { value: "Semantic", label: "Semantic" }, { value: "Keyword", label: "Keyword" }] },
+                      { name: "responseStyle", label: "Response style", type: "textarea", fullWidth: true },
+                    ]}
+                  />
+                </AdminLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/audit"
+            element={
+              <ProtectedRoute allowedRoles={["admin"]}>
+                <AdminLayout>
+                  <AdminConfigPage
+                    title="Audit Logs"
+                    description="Review system changes and administrative actions."
+                    storageKey="supportpilot_audit_actions"
+                    defaultValues={{
+                      retentionPolicy: "90 days",
+                      notifyOnCriticalChange: "Enabled",
+                      exportFormat: "CSV",
+                      reviewOwner: "Platform Admin",
+                    }}
+                    fields={[
+                      { name: "retentionPolicy", label: "Retention policy", type: "text" },
+                      { name: "notifyOnCriticalChange", label: "Critical change notifications", type: "select", options: [{ value: "Enabled", label: "Enabled" }, { value: "Disabled", label: "Disabled" }] },
+                      { name: "exportFormat", label: "Export format", type: "text" },
+                      { name: "reviewOwner", label: "Review owner", type: "text" },
+                    ]}
+                  />
+                </AdminLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/knowledge"
+            element={
+              <ProtectedRoute allowedRoles={["admin", "manager"]}>
+                <AdaptiveKnowledgePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/knowledge"
+            element={
+              <Navigate to="/knowledge" replace />
+            }
+          />
+          <Route
+            path="/portal/knowledge"
+            element={
+              <Navigate to="/portal/self-help" replace />
+            }
+          />
+
+
+          <Route
+            path="/admin/email-automation"
+            element={
+              <ProtectedRoute allowedRoles={["admin", "agent", "manager"]}>
+                <AdminLayout>
+                  <AIEmailAutomationPage />
+                </AdminLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/email"
+            element={<Navigate to="/admin/email-automation" replace />}
+          />
+
+          <Route
+            path="/integrations"
+            element={
+              <ProtectedRoute allowedRoles={["admin", "agent"]}>
+                <AdminLayout>
+                  <IntegrationsPage />
+                </AdminLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Hosted Atlassian Jira Cloud Portal */}
+          <Route
+            path="/jira"
+            element={<JiraCloudPortal />}
+          />
+          <Route
+            path="/jira/:key"
+            element={<JiraCloudPortal />}
+          />
+          <Route
+            path="/jira/browse/:key"
+            element={<JiraCloudPortal />}
+          />
+
+          <Route
+            path="/analytics"
+            element={
+              <ProtectedRoute allowedRoles={["admin"]}>
+                <AdminLayout>
+                  <AdminConfigPage
+                    title="Analytics"
+                    description="Review AI and support performance metrics."
+                    storageKey="supportpilot_analytics"
+                    defaultValues={{
+                      reportSchedule: "Daily",
+                      dashboardView: "Operations",
+                      alertThreshold: "15%",
+                      targetResolution: "90% within SLA",
+                    }}
+                    fields={[
+                      { name: "reportSchedule", label: "Report schedule", type: "text" },
+                      { name: "dashboardView", label: "Dashboard view", type: "text" },
+                      { name: "alertThreshold", label: "Alert threshold", type: "text" },
+                      { name: "targetResolution", label: "Target resolution", type: "textarea", fullWidth: true },
+                    ]}
+                  />
+                </AdminLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* =================================================
+              ADMIN TICKETS & ROUTE ALIASES
+          ================================================= */}
+
+          <Route
+            path="/admin/tickets"
+            element={
+              <ProtectedRoute allowedRoles={["admin", "agent", "manager"]}>
+                <AdminLayout>
+                  <AgentAllTicketsPage />
+                </AdminLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route path="/admin/config" element={<Navigate to="/admin/ai-settings" replace />} />
+          <Route path="/agent/tickets/:id" element={<Navigate to="/tickets/:id" replace />} />
+          <Route path="/admin/dashboard" element={<Navigate to="/admin" replace />} />
+          <Route path="/admin/all-tickets" element={<Navigate to="/tickets" replace />} />
+          <Route path="/agent" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/agent/dashboard" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/agents" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/agents/dashboard" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/get-started" element={<Navigate to="/login?fresh=true" replace />} />
+          <Route path="/getstarted" element={<Navigate to="/login?fresh=true" replace />} />
+          <Route path="/agent/tickets" element={<Navigate to="/tickets" replace />} />
+          <Route path="/agent/all-tickets" element={<Navigate to="/tickets" replace />} />
+          <Route path="/agent/my-tickets" element={<Navigate to="/tickets/queue" replace />} />
+          <Route path="/customer/tickets" element={<Navigate to="/portal/tickets" replace />} />
+          <Route path="/customer/my-tickets" element={<Navigate to="/portal/tickets" replace />} />
+          <Route path="/customer/all-tickets" element={<Navigate to="/portal/tickets" replace />} />
+          <Route path="/customer/create-ticket" element={<Navigate to="/portal/tickets/new" replace />} />
+          <Route path="/customer/settings" element={<Navigate to="/portal/tickets" replace />} />
+          <Route path="/portal/my-tickets" element={<Navigate to="/portal/tickets" replace />} />
+          <Route path="/all-tickets" element={<AllTicketsRedirect />} />
+          <Route path="/my-tickets" element={<MyTicketsRedirect />} />
+
+          {/* =================================================
+              UNAUTHORIZED
+          ================================================= */}
+
+          <Route
+            path="/unauthorized"
+            element={<UnauthorizedPage />}
+          />
+
+          {/* =================================================
+              DEFAULT
+          ================================================= */}
+
+          <Route
+            path="/"
+            element={<HomePage />}
+          />
+
+          <Route
+            path="*"
+            element={
+              <Navigate
+                to="/"
+                replace
+              />
+            }
+          />
+
+        </Routes>
+
+      </AuthProvider>
+
+    </BrowserRouter>
+  );
+}

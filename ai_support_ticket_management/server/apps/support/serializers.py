@@ -1,0 +1,665 @@
+from rest_framework import serializers
+from .models import (
+    Ticket,
+    TicketReply,
+    Notification,
+    AgentWorkflow,
+    AgentExecution,
+    JiraTicket,
+    EmailLog,
+    ActivityLog,
+)
+
+
+class TicketReplySerializer(serializers.ModelSerializer):
+    author_name = serializers.SerializerMethodField()
+    author_role = serializers.SerializerMethodField()
+    author_email = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TicketReply
+        fields = [
+            "id",
+            "ticket",
+            "user",
+            "author_name",
+            "author_role",
+            "author_email",
+            "message",
+            "attachment",
+            "is_internal",
+            "created_at",
+        ]
+        read_only_fields = ["id", "user", "ticket", "created_at"]
+
+    def get_author_name(self, obj):
+        if obj.user:
+            return obj.user.get_full_name() or obj.user.username
+        return "Unknown"
+
+    def get_author_role(self, obj):
+        if not obj.user:
+            return "customer"
+        if getattr(obj.user, "is_superuser", False):
+            return "ADMIN"
+        if getattr(obj.user, "is_staff", False):
+            return "SUPPORT_AGENT"
+        return "CUSTOMER"
+
+    def get_author_email(self, obj):
+        return obj.user.email if obj.user else ""
+
+
+class AgentExecutionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AgentExecution
+        fields = [
+            "id",
+            "execution_id",
+            "agent_name",
+            "input_data",
+            "output_data",
+            "status",
+            "confidence",
+            "latency_ms",
+            "error_message",
+            "started_at",
+            "completed_at",
+        ]
+
+
+class AgentWorkflowSerializer(serializers.ModelSerializer):
+    executions = AgentExecutionSerializer(many=True, read_only=True)
+    ticket_number = serializers.CharField(source="ticket.ticket_number", read_only=True)
+
+    class Meta:
+        model = AgentWorkflow
+        fields = [
+            "id",
+            "workflow_id",
+            "ticket",
+            "ticket_number",
+            "workflow_status",
+            "current_agent",
+            "final_confidence",
+            "latency_ms",
+            "error_message",
+            "started_at",
+            "completed_at",
+            "executions",
+        ]
+
+
+class JiraTicketSerializer(serializers.ModelSerializer):
+    ticket_number = serializers.CharField(source="ticket.ticket_number", read_only=True)
+
+    class Meta:
+        model = JiraTicket
+        fields = [
+            "id",
+            "jira_id",
+            "ticket",
+            "ticket_number",
+            "jira_issue_key",
+            "jira_issue_id",
+            "jira_status",
+            "jira_priority",
+            "assignee",
+            "team",
+            "summary",
+            "description",
+            "raw_payload",
+            "last_updated",
+            "synced_at",
+        ]
+
+
+class EmailLogSerializer(serializers.ModelSerializer):
+    ticket_number = serializers.CharField(source="ticket.ticket_number", read_only=True)
+
+    class Meta:
+        model = EmailLog
+        fields = [
+            "id",
+            "email_id",
+            "ticket",
+            "ticket_number",
+            "recipient",
+            "subject",
+            "email_type",
+            "trigger_status",
+            "status",
+            "body",
+            "html_body",
+            "failure_reason",
+            "ai_generated",
+            "metadata",
+            "sent_at",
+        ]
+
+
+class ActivityLogSerializer(serializers.ModelSerializer):
+    ticket_number = serializers.CharField(source="ticket.ticket_number", read_only=True)
+
+    class Meta:
+        model = ActivityLog
+        fields = [
+            "id",
+            "log_id",
+            "ticket",
+            "ticket_number",
+            "actor",
+            "action",
+            "description",
+            "metadata",
+            "timestamp",
+        ]
+
+
+class TicketSerializer(serializers.ModelSerializer):
+    ticketNumber = serializers.CharField(source="ticket_number", read_only=True)
+    customerId = serializers.IntegerField(source="created_by_id", read_only=True)
+    customerName = serializers.SerializerMethodField()
+    customerEmail = serializers.SerializerMethodField()
+    title = serializers.CharField(required=False)
+    subject = serializers.CharField(source="title", required=False)
+    subCategory = serializers.CharField(source="sub_category", required=False, allow_blank=True)
+    department = serializers.CharField(required=False, default="IT Department")
+    assignedAgentId = serializers.IntegerField(source="assigned_to_id", required=False, allow_null=True)
+    assignedAgentName = serializers.SerializerMethodField()
+    assignedAgent = serializers.SerializerMethodField()
+    assignedAgentDepartment = serializers.SerializerMethodField()
+    assignedAgentTitle = serializers.SerializerMethodField()
+    assignedAgentAvailability = serializers.SerializerMethodField()
+    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+    updatedAt = serializers.DateTimeField(source="updated_at", read_only=True)
+    replies = TicketReplySerializer(many=True, read_only=True)
+    latest_workflow = serializers.SerializerMethodField()
+    jira_integration = serializers.SerializerMethodField()
+    activity_count = serializers.SerializerMethodField()
+    suggested_steps = serializers.SerializerMethodField()
+    knowledge_source = serializers.SerializerMethodField()
+    knowledgeSource = serializers.SerializerMethodField()
+    ai = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Ticket
+        fields = [
+            "id",
+            "ticket_number",
+            "ticketNumber",
+            "title",
+            "subject",
+            "description",
+            "category",
+            "sub_category",
+            "subCategory",
+            "department",
+            "priority",
+            "severity",
+            "status",
+            "sentiment",
+            "sentiment_score",
+            "ai_confidence",
+            "auto_resolved",
+            "escalated",
+            "escalation_reason",
+            "assigned_queue",
+            "suggested_resolution",
+            "suggested_steps",
+            "knowledge_source",
+            "knowledgeSource",
+            "ai",
+            "resolution_notes",
+            "sla_response_due",
+            "sla_resolution_due",
+            "sla_breached",
+            "sla_warning",
+            "closed_at",
+            "similar_tickets_meta",
+            "ai_analysis_meta",
+            "attachment",
+            "created_by",
+            "customerId",
+            "customerName",
+            "customerEmail",
+            "assigned_to",
+            "assignedAgent",
+            "assignedAgentId",
+            "assignedAgentName",
+            "assignedAgentDepartment",
+            "assignedAgentTitle",
+            "assignedAgentAvailability",
+            "createdAt",
+            "updatedAt",
+            "created_at",
+            "updated_at",
+            "replies",
+            "latest_workflow",
+            "jira_integration",
+            "activity_count",
+        ]
+        read_only_fields = [
+            "id",
+            "ticket_number",
+            "ticketNumber",
+            "sentiment",
+            "sentiment_score",
+            "ai_confidence",
+            "auto_resolved",
+            "escalated",
+            "escalation_reason",
+            "assigned_queue",
+            "sla_response_due",
+            "sla_resolution_due",
+            "sla_breached",
+            "sla_warning",
+            "closed_at",
+            "similar_tickets_meta",
+            "ai_analysis_meta",
+            "created_by",
+            "customerId",
+            "customerName",
+            "customerEmail",
+            "created_at",
+            "updated_at",
+            "createdAt",
+            "updatedAt",
+            "replies",
+            "latest_workflow",
+            "jira_integration",
+            "activity_count",
+            "assignedAgent",
+            "assignedAgentName",
+            "assignedAgentDepartment",
+            "assignedAgentTitle",
+            "assignedAgentAvailability",
+            "suggested_steps",
+            "knowledge_source",
+            "knowledgeSource",
+            "ai",
+        ]
+
+    def get_customerName(self, obj):
+        if obj.created_by:
+            return obj.created_by.get_full_name() or obj.created_by.username
+        return "Unknown"
+
+    def get_customerEmail(self, obj):
+        return obj.created_by.email if obj.created_by else ""
+
+    def get_assignedAgentName(self, obj):
+        if obj.assigned_to:
+            return obj.assigned_to.get_full_name() or obj.assigned_to.username
+        return "Unassigned"
+
+    def get_assignedAgent(self, obj):
+        return self.get_assignedAgentName(obj)
+
+    def get_assignedAgentDepartment(self, obj):
+        if obj.assigned_to and hasattr(obj.assigned_to, "profile"):
+            return obj.assigned_to.profile.department
+        return obj.department or "IT Department"
+
+    def get_assignedAgentTitle(self, obj):
+        if obj.assigned_to and hasattr(obj.assigned_to, "profile"):
+            return obj.assigned_to.profile.title
+        return "Support Specialist"
+
+    def get_assignedAgentAvailability(self, obj):
+        if obj.assigned_to and hasattr(obj.assigned_to, "profile"):
+            return obj.assigned_to.profile.availability_status
+        return "AVAILABLE"
+
+    def get_latest_workflow(self, obj):
+        wf = obj.agent_workflows.first()
+        if wf:
+            return AgentWorkflowSerializer(wf).data
+        return None
+
+    def get_jira_integration(self, obj):
+        jt = obj.jira_tickets.first()
+        if jt:
+            return JiraTicketSerializer(jt).data
+        return None
+
+    def get_activity_count(self, obj):
+        return obj.activity_logs.count()
+
+    def get_suggested_steps(self, obj):
+        meta = obj.ai_analysis_meta or {}
+        if isinstance(meta, dict):
+            res_steps = meta.get("resolution", {}).get("troubleshooting_steps")
+            if res_steps and isinstance(res_steps, list) and len(res_steps) > 0:
+                return res_steps
+            ret_steps = meta.get("retrieval", {}).get("suggested_steps")
+            if ret_steps and isinstance(ret_steps, list) and len(ret_steps) > 0:
+                return ret_steps
+        if obj.suggested_resolution:
+            lines = [
+                line.strip() for line in str(obj.suggested_resolution).split("\n")
+                if line.strip() and not line.strip().lower().startswith("recommended troubleshooting")
+            ]
+            if lines:
+                return lines
+        # Fallback from KnowledgeArticle in database matching category
+        try:
+            from masterdata.models import KnowledgeArticle
+            from django.db.models import Q
+            cat = getattr(obj, "category", "") or ""
+            ka = KnowledgeArticle.objects.filter(is_active=True).filter(
+                Q(category__iexact=cat) | Q(title__icontains=cat)
+            ).first()
+            if ka and ka.steps:
+                import json
+                try:
+                    parsed = json.loads(ka.steps)
+                    if isinstance(parsed, list) and parsed:
+                        return parsed
+                except Exception:
+                    steps_list = [s.strip() for s in ka.steps.split("\n") if s.strip()]
+                    if steps_list:
+                        return steps_list
+        except Exception:
+            pass
+        return []
+
+    def get_knowledge_source(self, obj):
+        meta = obj.ai_analysis_meta or {}
+        if isinstance(meta, dict):
+            src = meta.get("retrieval", {}).get("knowledge_source")
+            if src:
+                return src
+            sources = meta.get("resolution", {}).get("sources", [])
+            if sources and isinstance(sources, list) and len(sources) > 0:
+                return sources[0]
+        category = getattr(obj, "category", "") or ""
+        subj = f"{getattr(obj, 'title', '') or ''} {getattr(obj, 'description', '') or ''}".lower()
+        try:
+            from masterdata.models import KnowledgeArticle
+            from django.db.models import Q
+            ka = KnowledgeArticle.objects.filter(is_active=True).filter(
+                Q(category__iexact=category) | Q(title__icontains=category)
+            ).first()
+            if ka and ka.title:
+                return f"{ka.title} ({ka.article_id})" if ka.article_id else ka.title
+        except Exception:
+            pass
+        if "network" in category.lower() or "vpn" in subj or "internet" in subj:
+            return "Corporate Network & Broadband Troubleshooting (KB-NET-002)"
+        if "account" in category.lower() or "auth" in category.lower() or "login" in subj or "password" in subj:
+            return "SSO Login & Self-Service Password Reset (KB-AUTH-003)"
+        return "Enterprise IT Knowledge Base / Standard Operations Manual"
+
+    def get_knowledgeSource(self, obj):
+        return self.get_knowledge_source(obj)
+
+    def get_ai(self, obj):
+        steps = self.get_suggested_steps(obj)
+        source = self.get_knowledge_source(obj)
+        return {
+            "suggestedResolution": steps,
+            "knowledgeSource": source,
+            "confidence": getattr(obj, "ai_confidence", 0.94) or 0.94,
+            "severity": getattr(obj, "severity", "Medium") or "Medium",
+            "classificationPath": "AI Engine + RAG Knowledge Pipeline",
+        }
+
+    def validate(self, attrs):
+        if "title" not in attrs:
+            subj = self.initial_data.get("subject") or self.initial_data.get("title")
+            if subj:
+                attrs["title"] = str(subj)
+            else:
+                attrs["title"] = "Support Ticket"
+        return attrs
+
+    def create(self, validated_data):
+        title = validated_data.get("title") or self.initial_data.get("subject") or self.initial_data.get("title") or "Support Ticket"
+        validated_data["title"] = title
+        return super().create(validated_data)
+
+
+class TicketListSerializer(serializers.ModelSerializer):
+    ticketNumber = serializers.CharField(source="ticket_number", read_only=True)
+    customerId = serializers.IntegerField(source="created_by_id", read_only=True)
+    customerName = serializers.SerializerMethodField()
+    customerEmail = serializers.SerializerMethodField()
+    subject = serializers.CharField(source="title", read_only=True)
+    subCategory = serializers.CharField(source="sub_category", read_only=True)
+    department = serializers.CharField(read_only=True)
+    assignedAgentId = serializers.IntegerField(source="assigned_to_id", read_only=True)
+    assignedAgentName = serializers.SerializerMethodField()
+    assignedAgent = serializers.SerializerMethodField()
+    assignedAgentDepartment = serializers.SerializerMethodField()
+    assignedAgentTitle = serializers.SerializerMethodField()
+    assignedAgentAvailability = serializers.SerializerMethodField()
+    suggested_steps = serializers.SerializerMethodField()
+    knowledge_source = serializers.SerializerMethodField()
+    knowledgeSource = serializers.SerializerMethodField()
+    ai = serializers.SerializerMethodField()
+    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+    updatedAt = serializers.DateTimeField(source="updated_at", read_only=True)
+
+    class Meta:
+        model = Ticket
+        fields = [
+            "id",
+            "ticket_number",
+            "ticketNumber",
+            "title",
+            "subject",
+            "description",
+            "category",
+            "sub_category",
+            "subCategory",
+            "department",
+            "priority",
+            "severity",
+            "status",
+            "sentiment",
+            "sentiment_score",
+            "ai_confidence",
+            "suggested_resolution",
+            "suggested_steps",
+            "knowledge_source",
+            "knowledgeSource",
+            "ai",
+            "assigned_queue",
+            "sla_response_due",
+            "sla_resolution_due",
+            "sla_breached",
+            "sla_warning",
+            "created_by",
+            "customerId",
+            "customerName",
+            "customerEmail",
+            "assigned_to",
+            "assignedAgent",
+            "assignedAgentId",
+            "assignedAgentName",
+            "assignedAgentDepartment",
+            "assignedAgentTitle",
+            "assignedAgentAvailability",
+            "createdAt",
+            "updatedAt",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_suggested_steps(self, obj):
+        meta = obj.ai_analysis_meta or {}
+        if isinstance(meta, dict):
+            res_steps = meta.get("resolution", {}).get("troubleshooting_steps")
+            if res_steps and isinstance(res_steps, list) and len(res_steps) > 0:
+                return res_steps
+            ret_steps = meta.get("retrieval", {}).get("suggested_steps")
+            if ret_steps and isinstance(ret_steps, list) and len(ret_steps) > 0:
+                return ret_steps
+        if obj.suggested_resolution:
+            lines = [
+                line.strip() for line in str(obj.suggested_resolution).split("\n")
+                if line.strip() and not line.strip().lower().startswith("recommended troubleshooting")
+            ]
+            if lines:
+                return lines
+        try:
+            from masterdata.models import KnowledgeArticle
+            from django.db.models import Q
+            cat = getattr(obj, "category", "") or ""
+            ka = KnowledgeArticle.objects.filter(is_active=True).filter(
+                Q(category__iexact=cat) | Q(title__icontains=cat)
+            ).first()
+            if ka and ka.steps:
+                import json
+                try:
+                    parsed = json.loads(ka.steps)
+                    if isinstance(parsed, list) and parsed:
+                        return parsed
+                except Exception:
+                    steps_list = [s.strip() for s in ka.steps.split("\n") if s.strip()]
+                    if steps_list:
+                        return steps_list
+        except Exception:
+            pass
+        return []
+
+    def get_knowledge_source(self, obj):
+        meta = obj.ai_analysis_meta or {}
+        if isinstance(meta, dict):
+            src = meta.get("retrieval", {}).get("knowledge_source")
+            if src:
+                return src
+            sources = meta.get("resolution", {}).get("sources", [])
+            if sources and isinstance(sources, list) and len(sources) > 0:
+                return sources[0]
+        category = getattr(obj, "category", "") or ""
+        subj = f"{getattr(obj, 'title', '') or ''} {getattr(obj, 'description', '') or ''}".lower()
+        try:
+            from masterdata.models import KnowledgeArticle
+            from django.db.models import Q
+            ka = KnowledgeArticle.objects.filter(is_active=True).filter(
+                Q(category__iexact=category) | Q(title__icontains=category)
+            ).first()
+            if ka and ka.title:
+                return f"{ka.title} ({ka.article_id})" if ka.article_id else ka.title
+        except Exception:
+            pass
+        if "network" in category.lower() or "vpn" in subj or "internet" in subj:
+            return "Corporate Network & Broadband Troubleshooting (KB-NET-002)"
+        if "account" in category.lower() or "auth" in category.lower() or "login" in subj or "password" in subj:
+            return "SSO Login & Self-Service Password Reset (KB-AUTH-003)"
+        return "Enterprise IT Knowledge Base / Standard Operations Manual"
+
+    def get_knowledgeSource(self, obj):
+        return self.get_knowledge_source(obj)
+
+    def get_ai(self, obj):
+        steps = self.get_suggested_steps(obj)
+        source = self.get_knowledge_source(obj)
+        return {
+            "suggestedResolution": steps,
+            "knowledgeSource": source,
+            "confidence": getattr(obj, "ai_confidence", 0.94) or 0.94,
+            "severity": getattr(obj, "severity", "Medium") or "Medium",
+            "classificationPath": "AI Engine + RAG Knowledge Pipeline",
+        }
+
+    def get_customerName(self, obj):
+        if obj.created_by:
+            return obj.created_by.get_full_name() or obj.created_by.username
+        return "Unknown"
+
+    def get_customerEmail(self, obj):
+        return obj.created_by.email if obj.created_by else ""
+
+    def get_assignedAgentName(self, obj):
+        if obj.assigned_to:
+            return obj.assigned_to.get_full_name() or obj.assigned_to.username
+        return "Unassigned"
+
+    def get_assignedAgent(self, obj):
+        return self.get_assignedAgentName(obj)
+
+    def get_assignedAgentDepartment(self, obj):
+        if obj.assigned_to and hasattr(obj.assigned_to, "profile"):
+            return obj.assigned_to.profile.department
+        return obj.department or "IT Department"
+
+    def get_assignedAgentTitle(self, obj):
+        if obj.assigned_to and hasattr(obj.assigned_to, "profile"):
+            return obj.assigned_to.profile.title
+        return "Support Specialist"
+
+    def get_assignedAgentAvailability(self, obj):
+        if obj.assigned_to and hasattr(obj.assigned_to, "profile"):
+            return obj.assigned_to.profile.availability_status
+        return "AVAILABLE"
+
+
+
+class TicketStatusUpdateSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(
+        choices=[
+            "OPEN",
+            "Open",
+            "NEW",
+            "DRAFT",
+            "CLASSIFIED",
+            "Classified",
+            "AI_ANALYZING",
+            "AI_PROCESSING",
+            "AI_RESPONDED",
+            "AI_RESOLUTION_READY",
+            "AI_RESOLVED",
+            "ASSIGNED",
+            "IN_PROGRESS",
+            "In Progress",
+            "WAITING_FOR_CUSTOMER",
+            "AWAITING_CUSTOMER_INFO",
+            "ON_HOLD",
+            "PENDING_AGENT_REVIEW",
+            "PENDING_CONFIRMATION",
+            "PENDING",
+            "Pending",
+            "ESCALATED",
+            "RESOLVED",
+            "Resolved",
+            "CLOSED",
+            "Closed",
+            "REOPENED",
+        ]
+    )
+
+
+class TicketReplyCreateSerializer(serializers.Serializer):
+    message = serializers.CharField(required=True)
+    attachment = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    is_internal = serializers.BooleanField(required=False, default=False)
+
+
+class TicketAssignSerializer(serializers.Serializer):
+    agent_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    assignedAgentId = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    agent_name = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    agentName = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    ticket_number = serializers.CharField(source="ticket.ticket_number", read_only=True)
+
+    class Meta:
+        model = Notification
+        fields = [
+            "id",
+            "notification_id",
+            "ticket",
+            "ticket_number",
+            "title",
+            "message",
+            "notification_type",
+            "is_read",
+            "created_at",
+            "read_at",
+        ]
+        read_only_fields = ["id", "notification_id", "ticket_number", "created_at"]

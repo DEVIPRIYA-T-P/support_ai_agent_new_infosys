@@ -1,0 +1,176 @@
+from django.urls import path, re_path
+
+from .views import (
+    TicketListCreateView,
+    CustomerTicketListView,
+    AgentTicketListView,
+    TicketDetailView,
+    TicketStatusUpdateView,
+    TicketReplyCreateView,
+    TicketAssignView,
+    TicketClassificationView,
+    ConfirmResolutionView,
+    ReopenTicketView,
+    NotificationListView,
+    NotificationMarkReadView,
+    NotificationMarkAllReadView,
+    AgentListView,
+    TicketAutoAssignView,
+    AgentAvailabilityUpdateView,
+    AgentDetailView,
+    AgentReassignTicketsView,
+)
+from .views_m3 import (
+    AgentWorkflowStartView,
+    AgentWorkflowDetailView,
+    AgentWorkflowExecutionsView,
+    DiagnosisAgentAPIView,
+    RetrievalAgentAPIView,
+    ResolutionAgentAPIView,
+    EscalationAgentAPIView,
+    AgentRunsListView,
+    AgentRunDetailView,
+    JiraTicketView,
+    JiraSyncView,
+    JiraConfigView,
+    EmailTicketCreatedView,
+    EmailResolutionView,
+    EmailEscalationView,
+    EmailResolvedView,
+    EmailLogsView,
+    SendTicketEmailAPIView,
+    ActivityLogsView,
+    AIEmailAutomationConfigView,
+    AIEmailRetryView,
+    AIEmailPreviewView,
+    AIEmailTriggerView,
+)
+from .views_m4 import (
+    M4ReviewQueueView,
+    M4ValidateAgentActionView,
+    M4CustomerConfirmationView,
+    M4CustomerFeedbackView,
+    M4ConfigView,
+    M4AnalyticsView,
+)
+
+urlpatterns = [
+    # Customer / General Ticket Routes
+    path("tickets", TicketListCreateView.as_view(), name="ticket-list-create-no-slash"),
+    path("tickets/", TicketListCreateView.as_view(), name="ticket-list-create"),
+    path("tickets/my", CustomerTicketListView.as_view(), name="customer-tickets-no-slash"),
+    path("tickets/my/", CustomerTicketListView.as_view(), name="customer-tickets"),
+
+    # Agent Queue Route
+    path("agent/tickets", AgentTicketListView.as_view(), name="agent-tickets-no-slash"),
+    path("agent/tickets/", AgentTicketListView.as_view(), name="agent-tickets"),
+    path("agent/list", AgentListView.as_view(), name="agent-list-no-slash"),
+    path("agent/list/", AgentListView.as_view(), name="agent-list"),
+    path("agents", AgentListView.as_view(), name="agents-no-slash"),
+    path("agents/", AgentListView.as_view(), name="agents"),
+    re_path(r"^agent/availability/?$", AgentAvailabilityUpdateView.as_view(), name="agent-availability-current"),
+    re_path(r"^agent/(?P<pk>[A-Za-z0-9_-]+)/availability/?$", AgentAvailabilityUpdateView.as_view(), name="agent-availability-user"),
+    re_path(r"^agent/(?P<pk>[A-Za-z0-9_-]+)/details/?$", AgentDetailView.as_view(), name="agent-details"),
+    re_path(r"^agents/(?P<pk>[A-Za-z0-9_-]+)/?$", AgentDetailView.as_view(), name="agent-details-alt"),
+    re_path(r"^agent/(?P<pk>[A-Za-z0-9_-]+)/reassign-tickets/?$", AgentReassignTicketsView.as_view(), name="agent-reassign-tickets"),
+
+    # Individual Ticket Operations (by numeric ID or string ticket_number like TKT-1001)
+    re_path(r"^tickets/(?P<pk>[A-Za-z0-9_-]+)/status/?$", TicketStatusUpdateView.as_view(), name="ticket-status-update"),
+    re_path(r"^tickets/(?P<pk>[A-Za-z0-9_-]+)/reply/?$", TicketReplyCreateView.as_view(), name="ticket-reply-create"),
+    re_path(r"^tickets/(?P<pk>[A-Za-z0-9_-]+)/confirm-resolution/?$", ConfirmResolutionView.as_view(), name="ticket-confirm-resolution"),
+    re_path(r"^tickets/(?P<pk>[A-Za-z0-9_-]+)/reopen/?$", ReopenTicketView.as_view(), name="ticket-reopen"),
+    re_path(r"^tickets/(?P<pk>[A-Za-z0-9_-]+)/assign/?$", TicketAssignView.as_view(), name="ticket-assign"),
+    path("tickets/auto-assign", TicketAutoAssignView.as_view(), name="tickets-auto-assign-no-slash"),
+    path("tickets/auto-assign/", TicketAutoAssignView.as_view(), name="tickets-auto-assign"),
+    re_path(r"^tickets/(?P<pk>[A-Za-z0-9_-]+)/auto-assign/?$", TicketAutoAssignView.as_view(), name="ticket-auto-assign"),
+    re_path(r"^tickets/(?P<pk>[A-Za-z0-9_-]+)/?$", TicketDetailView.as_view(), name="ticket-detail"),
+
+    # Notification Routes
+    path("notifications", NotificationListView.as_view(), name="notifications-list-no-slash"),
+    path("notifications/", NotificationListView.as_view(), name="notifications-list"),
+    path("notifications/mark-all-read", NotificationMarkAllReadView.as_view(), name="notifications-mark-all-read-no-slash"),
+    path("notifications/mark-all-read/", NotificationMarkAllReadView.as_view(), name="notifications-mark-all-read"),
+    re_path(r"^notifications/(?P<pk>[A-Za-z0-9_-]+)/read/?$", NotificationMarkReadView.as_view(), name="notification-mark-read"),
+
+    # Classification & Knowledge Routes (M1 / M2)
+    path("classify", TicketClassificationView.as_view(), name="ticket-classify-no-slash"),
+    path("classify/", TicketClassificationView.as_view(), name="ticket-classify"),
+
+    # =====================================================
+    # Milestone 3 Multi-Agent AI Workflow Routes
+    # =====================================================
+    path("agent/workflow/start", AgentWorkflowStartView.as_view(), name="agent-workflow-start-no-slash"),
+    path("agent/workflow/start/", AgentWorkflowStartView.as_view(), name="agent-workflow-start"),
+    re_path(r"^agent/workflow/(?P<ticketId>[A-Za-z0-9_-]+)/agents/?$", AgentWorkflowExecutionsView.as_view(), name="agent-workflow-executions"),
+    re_path(r"^agent/workflow/(?P<ticketId>[A-Za-z0-9_-]+)/?$", AgentWorkflowDetailView.as_view(), name="agent-workflow-detail"),
+    path("agent/diagnosis", DiagnosisAgentAPIView.as_view(), name="agent-diagnosis-no-slash"),
+    path("agent/diagnosis/", DiagnosisAgentAPIView.as_view(), name="agent-diagnosis"),
+    path("agent/retrieve", RetrievalAgentAPIView.as_view(), name="agent-retrieve-no-slash"),
+    path("agent/retrieve/", RetrievalAgentAPIView.as_view(), name="agent-retrieve"),
+    path("agent/resolve", ResolutionAgentAPIView.as_view(), name="agent-resolve-no-slash"),
+    path("agent/resolve/", ResolutionAgentAPIView.as_view(), name="agent-resolve"),
+    path("agent/escalate", EscalationAgentAPIView.as_view(), name="agent-escalate-no-slash"),
+    path("agent/escalate/", EscalationAgentAPIView.as_view(), name="agent-escalate"),
+    path("agent/runs", AgentRunsListView.as_view(), name="agent-runs-list-no-slash"),
+    path("agent/runs/", AgentRunsListView.as_view(), name="agent-runs-list"),
+    re_path(r"^agent/runs/(?P<runId>[A-Za-z0-9_-]+)/?$", AgentRunDetailView.as_view(), name="agent-run-detail"),
+
+    # =====================================================
+    # Milestone 3 Jira Integration Routes
+    # =====================================================
+    path("jira/tickets", JiraTicketView.as_view(), name="jira-tickets-create-no-slash"),
+    path("jira/tickets/", JiraTicketView.as_view(), name="jira-tickets-create"),
+    re_path(r"^jira/tickets/(?P<ticketId>[A-Za-z0-9_-]+)/?$", JiraTicketView.as_view(), name="jira-tickets-detail"),
+    path("jira/sync", JiraSyncView.as_view(), name="jira-sync-no-slash"),
+    path("jira/sync/", JiraSyncView.as_view(), name="jira-sync"),
+    path("jira/config", JiraConfigView.as_view(), name="jira-config-no-slash"),
+    path("jira/config/", JiraConfigView.as_view(), name="jira-config"),
+
+    # =====================================================
+    # Milestone 3 Email Automation Routes
+    # =====================================================
+    path("email/automation-config", AIEmailAutomationConfigView.as_view(), name="email-automation-config-no-slash"),
+    path("email/automation-config/", AIEmailAutomationConfigView.as_view(), name="email-automation-config"),
+    path("email/retry", AIEmailRetryView.as_view(), name="email-retry-no-slash"),
+    path("email/retry/", AIEmailRetryView.as_view(), name="email-retry"),
+    re_path(r"^email/retry/(?P<email_id>[A-Za-z0-9_-]+)/?$", AIEmailRetryView.as_view(), name="email-retry-id"),
+    path("email/preview", AIEmailPreviewView.as_view(), name="email-preview-no-slash"),
+    path("email/preview/", AIEmailPreviewView.as_view(), name="email-preview"),
+    path("email/trigger-status", AIEmailTriggerView.as_view(), name="email-trigger-status-no-slash"),
+    path("email/trigger-status/", AIEmailTriggerView.as_view(), name="email-trigger-status"),
+    path("email/ticket-created", EmailTicketCreatedView.as_view(), name="email-ticket-created-no-slash"),
+    path("email/ticket-created/", EmailTicketCreatedView.as_view(), name="email-ticket-created"),
+    path("email/resolution", EmailResolutionView.as_view(), name="email-resolution-no-slash"),
+    path("email/resolution/", EmailResolutionView.as_view(), name="email-resolution"),
+    path("email/escalation", EmailEscalationView.as_view(), name="email-escalation-no-slash"),
+    path("email/escalation/", EmailEscalationView.as_view(), name="email-escalation"),
+    path("email/resolved", EmailResolvedView.as_view(), name="email-resolved-no-slash"),
+    path("email/resolved/", EmailResolvedView.as_view(), name="email-resolved"),
+    path("email/send", SendTicketEmailAPIView.as_view(), name="email-send-no-slash"),
+    path("email/send/", SendTicketEmailAPIView.as_view(), name="email-send"),
+    re_path(r"^tickets/(?P<pk>[A-Za-z0-9_-]+)/send-email/?$", SendTicketEmailAPIView.as_view(), name="ticket-send-email"),
+    re_path(r"^email/logs/(?P<ticketId>[A-Za-z0-9_-]+)/?$", EmailLogsView.as_view(), name="email-logs-ticket"),
+    path("email/logs", EmailLogsView.as_view(), name="email-logs-all-no-slash"),
+    path("email/logs/", EmailLogsView.as_view(), name="email-logs-all"),
+
+    # =====================================================
+    # Milestone 3 Activity Logs Routes
+    # =====================================================
+    re_path(r"^activity/logs/(?P<ticketId>[A-Za-z0-9_-]+)/?$", ActivityLogsView.as_view(), name="activity-logs-ticket"),
+
+    # =====================================================
+    # Milestone 4 Human-in-the-loop & Closure Workflow Routes
+    # =====================================================
+    path("m4/review-queue", M4ReviewQueueView.as_view(), name="m4-review-queue-no-slash"),
+    path("m4/review-queue/", M4ReviewQueueView.as_view(), name="m4-review-queue"),
+    path("m4/validate-agent-action", M4ValidateAgentActionView.as_view(), name="m4-validate-agent-action-no-slash"),
+    path("m4/validate-agent-action/", M4ValidateAgentActionView.as_view(), name="m4-validate-agent-action"),
+    path("m4/customer-confirmation", M4CustomerConfirmationView.as_view(), name="m4-customer-confirmation-no-slash"),
+    path("m4/customer-confirmation/", M4CustomerConfirmationView.as_view(), name="m4-customer-confirmation"),
+    path("m4/customer-feedback", M4CustomerFeedbackView.as_view(), name="m4-customer-feedback-no-slash"),
+    path("m4/customer-feedback/", M4CustomerFeedbackView.as_view(), name="m4-customer-feedback"),
+    path("m4/config", M4ConfigView.as_view(), name="m4-config-no-slash"),
+    path("m4/config/", M4ConfigView.as_view(), name="m4-config"),
+    path("m4/analytics", M4AnalyticsView.as_view(), name="m4-analytics-no-slash"),
+    path("m4/analytics/", M4AnalyticsView.as_view(), name="m4-analytics"),
+]

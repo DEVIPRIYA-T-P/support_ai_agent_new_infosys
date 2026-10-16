@@ -1,0 +1,14 @@
+[tool.pyrefly]
+search-paths = [
+    ".",
+    "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages"
+]
+site-package-path = [
+    "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages"
+]
+
+[tool.pyright]
+extraPaths = [
+    ".",
+    "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages"
+]

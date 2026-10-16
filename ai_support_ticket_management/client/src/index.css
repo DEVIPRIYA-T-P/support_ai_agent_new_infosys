@@ -1,0 +1,715 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #1c2430;
+  background-color: #f4f6f5;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #f4f6f5;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button, input, select, textarea {
+  font: inherit;
+}
+
+button, a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* =====================================================
+/* =====================================================
+   1. CUSTOMER PORTAL THEME (Clean Enterprise Light)
+===================================================== */
+.sp-customer-shell, .sp-shell {
+  min-height: 100vh;
+  background: #f8fafc;
+}
+
+.sp-portal-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 58px;
+  padding: 13px clamp(18px, 4vw, 30px);
+  background: #ffffff;
+  color: #0f172a;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.sp-portal-links {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+}
+
+.sp-portal-links a {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.sp-portal-links a:hover, .sp-portal-links a.active {
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.sp-logo {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  text-decoration: none;
+}
+
+.sp-logo-mark, .sp-avatar {
+  display: grid;
+  place-items: center;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 700;
+}
+
+.sp-logo-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+.sp-logo-name {
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.sp-avatar {
+  width: 29px;
+  height: 29px;
+  border-radius: 50%;
+  font-size: 11px;
+  flex: 0 0 auto;
+}
+
+.sp-portal-main {
+  padding: 26px clamp(18px, 4vw, 30px);
+}
+
+
+/* =====================================================
+   2. AGENT WORKSPACE THEME (Enterprise White / Blue Accent)
+===================================================== */
+.sp-agent-shell {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  min-height: 100vh;
+  background: #f8fafc;
+}
+
+.sp-agent-sidebar {
+  display: flex;
+  height: 100vh;
+  max-height: 100vh;
+  position: sticky;
+  top: 0;
+  flex-direction: column;
+  background: #ffffff;
+  border-right: 1px solid #e2e8f0;
+  padding: 18px 0 0;
+  overflow: hidden;
+  z-index: 30;
+}
+
+.sp-sidebar-scrollable {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.sp-sidebar-scrollable::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sp-sidebar-scrollable::-webkit-scrollbar-track {
+  background: #f8fafc;
+}
+
+.sp-sidebar-scrollable::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+.sp-sidebar-scrollable::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.sp-agent-sidebar .sp-logo-mark {
+  background: #2563eb;
+  color: #fff;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  font-weight: 700;
+}
+
+.sp-agent-sidebar .sp-sidebar-sub {
+  color: #64748b;
+  font-family: inherit;
+  font-size: 9px;
+  letter-spacing: 1.2px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.sp-agent-sidebar .sp-sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 18px 18px;
+  border-bottom: 1px solid #f1f5f9;
+  text-decoration: none;
+}
+
+.sp-agent-sidebar .sp-sidebar-nav a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 8px 18px;
+  border-left: 3px solid transparent;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.sp-agent-sidebar .sp-sidebar-nav a:hover {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.sp-agent-sidebar .sp-sidebar-nav a.active {
+  background: #eff6ff;
+  border-left-color: #2563eb;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.sp-agent-sidebar .sp-sidebar-nav a.active .sp-sidebar-count {
+  background: #2563eb;
+  color: #fff;
+}
+
+.sp-agent-sidebar .sp-sidebar-count {
+  margin-left: auto;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: #e2e8f0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.sp-agent-sidebar .sp-sidebar-footer {
+  margin-top: auto;
+  padding: 14px 18px 16px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.sp-agent-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 24px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #ffffff;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.sp-agent-topbar .sp-breadcrumb {
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.sp-agent-topbar h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.sp-agent-avatar {
+  background: #2563eb;
+  color: #fff;
+}
+
+
+/* =====================================================
+   3. ADMIN CONSOLE THEME (Enterprise White / Blue Accent)
+===================================================== */
+.sp-admin-shell {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  min-height: 100vh;
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.sp-admin-sidebar {
+  display: flex;
+  height: 100vh;
+  max-height: 100vh;
+  position: sticky;
+  top: 0;
+  flex-direction: column;
+  background: #ffffff;
+  border-right: 1px solid #e2e8f0;
+  padding: 18px 0 0;
+  overflow: hidden;
+  z-index: 30;
+}
+
+.sp-admin-sidebar .sp-logo-mark {
+  background: #2563eb;
+  color: #ffffff;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  font-weight: 700;
+}
+
+.sp-admin-sidebar .sp-sidebar-sub {
+  color: #64748b;
+  font-family: inherit;
+  font-size: 9px;
+  letter-spacing: 1.2px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.sp-admin-sidebar .sp-sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 18px 18px;
+  border-bottom: 1px solid #f1f5f9;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.sp-admin-sidebar .sp-nav-heading {
+  padding: 14px 18px 6px;
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+
+.sp-admin-sidebar .sp-sidebar-nav {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.sp-admin-sidebar .sp-sidebar-nav::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sp-admin-sidebar .sp-sidebar-nav::-webkit-scrollbar-track {
+  background: #f8fafc;
+}
+
+.sp-admin-sidebar .sp-sidebar-nav::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+.sp-admin-sidebar .sp-sidebar-nav::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.sp-admin-sidebar .sp-sidebar-nav a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 8px 18px;
+  border-left: 3px solid transparent;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.sp-admin-sidebar .sp-sidebar-nav a:hover {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.sp-admin-sidebar .sp-sidebar-nav a.active {
+  background: #eff6ff;
+  border-left-color: #2563eb;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.sp-admin-sidebar .sp-sidebar-footer {
+  margin-top: auto;
+  padding: 14px 18px 16px;
+  border-top: 1px solid #f1f5f9;
+  flex-shrink: 0;
+}
+
+.sp-admin-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 24px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #ffffff;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.sp-admin-topbar .sp-breadcrumb {
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.sp-admin-topbar h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.sp-admin-avatar {
+  background: #2563eb;
+  color: #ffffff;
+  font-weight: 700;
+}
+
+
+/* =====================================================
+   4. SUPPORT MANAGER THEME (Enterprise White / Blue Accent)
+===================================================== */
+.sp-manager-shell {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  min-height: 100vh;
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.sp-manager-sidebar {
+  display: flex;
+  height: 100vh;
+  max-height: 100vh;
+  position: sticky;
+  top: 0;
+  flex-direction: column;
+  background: #ffffff;
+  border-right: 1px solid #e2e8f0;
+  padding: 18px 0 0;
+  overflow: hidden;
+  z-index: 30;
+}
+
+.sp-manager-sidebar .sp-logo-mark {
+  background: #2563eb;
+  color: #ffffff;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  font-weight: 700;
+}
+
+.sp-manager-sidebar .sp-sidebar-sub {
+  color: #64748b;
+  font-family: inherit;
+  font-size: 9px;
+  letter-spacing: 1.2px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.sp-manager-sidebar .sp-sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 18px 18px;
+  border-bottom: 1px solid #f1f5f9;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.sp-manager-sidebar .sp-nav-heading {
+  padding: 14px 18px 6px;
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+
+.sp-manager-sidebar .sp-sidebar-nav {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.sp-manager-sidebar .sp-sidebar-nav::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sp-manager-sidebar .sp-sidebar-nav::-webkit-scrollbar-track {
+  background: #f8fafc;
+}
+
+.sp-manager-sidebar .sp-sidebar-nav::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+.sp-manager-sidebar .sp-sidebar-nav::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.sp-manager-sidebar .sp-sidebar-nav a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 8px 18px;
+  border-left: 3px solid transparent;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.sp-manager-sidebar .sp-sidebar-nav a:hover {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.sp-manager-sidebar .sp-sidebar-nav a.active {
+  background: #eff6ff;
+  border-left-color: #2563eb;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.sp-manager-sidebar .sp-sidebar-nav a.active .sp-sidebar-count {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.sp-manager-sidebar .sp-sidebar-count {
+  margin-left: auto;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: #e2e8f0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.sp-manager-sidebar .sp-sidebar-footer {
+  margin-top: auto;
+  padding: 14px 18px 16px;
+  border-top: 1px solid #f1f5f9;
+  flex-shrink: 0;
+}
+
+.sp-manager-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 24px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #ffffff;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.sp-manager-topbar .sp-breadcrumb {
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.sp-manager-topbar h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.sp-manager-avatar {
+  background: #2563eb;
+  color: #ffffff;
+  font-weight: 700;
+}
+
+
+
+/* =====================================================
+   COMMON UI COMPONENTS
+===================================================== */
+.sp-content {
+  flex: 1;
+  overflow: auto;
+  padding: 24px;
+}
+
+.sp-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.sp-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.sp-card-header h2, .sp-card-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.sp-card-body {
+  padding: 18px;
+}
+
+.sp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 10px;
+  padding: 8.5px 16px;
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 650;
+  transition: all 0.2s ease;
+}
+
+.sp-btn-primary {
+  background: #14532d;
+  color: #fff;
+}
+
+.sp-btn-primary:hover {
+  background: #0f2b1d;
+}
+
+.sp-admin-shell .sp-btn-primary {
+  background: #0891b2;
+  color: #ffffff;
+}
+
+.sp-admin-shell .sp-btn-primary:hover {
+  background: #0e7490;
+}
+
+.sp-btn-secondary {
+  border: 1.5px solid #dfe5e1;
+  background: #fff;
+  color: #1c2430;
+}
+
+
+.sp-btn-secondary:hover {
+  border-color: #1f7a45;
+}
+
+.sp-tag {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 20px;
+  padding: 3px 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.sp-tag-info { color: #1d4ed8; background: #eff6ff; }
+.sp-tag-success { color: #15803d; background: #f0fdf4; }
+.sp-tag-warning { color: #b45309; background: #fffbeb; }
+.sp-tag-neutral { color: #475569; background: #f1f5f9; }
+.sp-tag-brand { color: #14532d; background: #eef4ef; }
+
+.sp-priority {
+  display: inline-flex;
+  border-radius: 5px;
+  padding: 3px 7px;
+  color: #fff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  font-weight: 800;
+}
+
+.sp-p1 { background: #b91c1c; }
+.sp-p2 { background: #c2410c; }
+.sp-p3 { background: #b45309; }
+.sp-p4 { background: #475569; }
+
+@media (max-width: 640px) {
+  .sp-agent-shell, .sp-admin-shell, .sp-manager-shell { display: block; }
+  .sp-agent-sidebar, .sp-admin-sidebar, .sp-manager-sidebar { display: none; }
+  .sp-agent-topbar, .sp-admin-topbar, .sp-manager-topbar { align-items: flex-start; flex-direction: column; }
+  .sp-portal-links { gap: 14px; }
+}
+
+@media (max-width: 520px) {
+  .sp-portal-nav { align-items: flex-start; flex-wrap: wrap; }
+  .sp-portal-links { order: 3; width: 100%; justify-content: space-between; }
+  .sp-content { padding: 16px; }
+}

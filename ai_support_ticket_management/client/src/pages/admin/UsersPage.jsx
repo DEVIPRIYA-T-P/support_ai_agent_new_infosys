@@ -1,0 +1,469 @@
+import { useEffect, useState } from "react";
+import { FiCheck, FiX, FiPlus, FiUser, FiSearch } from "react-icons/fi";
+import { seedUsers } from "../../data/seedData";
+import { storage, STORAGE_KEYS } from "../../services/storageService";
+import {
+  deleteUserEverywhere,
+  isUserDeleted,
+  fetchUsersApi,
+} from "../../services/ticketService";
+import AgentDetailsDrawer from "../../components/AgentDetailsDrawer";
+
+const emptyForm = {
+  name: "",
+  email: "",
+  department: "",
+  role: "Agent",
+  team: "Support",
+  status: "Active",
+};
+
+export default function UsersPage() {
+  const [users, setUsers] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState(emptyForm);
+  const [roleFilter, setRoleFilter] = useState("ALL");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [deleteToast, setDeleteToast] = useState(null);
+  const [inspectingUser, setInspectingUser] = useState(null);
+
+  const loadAllUsers = async () => {
+    const stored = storage.get(STORAGE_KEYS.users, []);
+    let backendUsers = [];
+    try {
+      backendUsers = await fetchUsersApi();
+    } catch (e) {}
+
+    // Combine seedUsers, stored users, and backend users (strictly excluding any deleted users)
+    const userMap = new Map();
+
+    // 1. Seed users first (only non-deleted)
+    seedUsers.forEach((u) => {
+      if (!isUserDeleted(u)) {
+        userMap.set(u.email.toLowerCase(), { ...u });
+      }
+    });
+
+    // 2. Overlay stored users (only non-deleted)
+    if (Array.isArray(stored)) {
+      stored.forEach((u) => {
+        if (!u || !u.email || isUserDeleted(u)) return;
+        const key = u.email.toLowerCase();
+        if (["arun@company.com", "bala@company.com", "admin@company.com", "employee@supportpilot.com"].includes(key)) {
+          return;
+        }
+        if (userMap.has(key)) {
+          userMap.set(key, { ...userMap.get(key), ...u });
+        } else {
+          userMap.set(key, u);
+        }
+      });
+    }
+
+    // 3. Overlay backend users
+    if (Array.isArray(backendUsers)) {
+      backendUsers.forEach((bu) => {
+        if (!bu || !bu.email || isUserDeleted(bu)) return;
+        const key = bu.email.toLowerCase();
+        const existing = userMap.get(key) || {};
+        userMap.set(key, { ...existing, ...bu });
+      });
+    }
+
+    const merged = Array.from(userMap.values()).filter((u) => !isUserDeleted(u));
+    storage.set(STORAGE_KEYS.users, merged);
+    setUsers(merged);
+    window.dispatchEvent(new CustomEvent("supportpilot_users_changed", { detail: merged }));
+  };
+
+  useEffect(() => {
+    loadAllUsers();
+
+    const handleUsersChange = () => {
+      loadAllUsers();
+    };
+    window.addEventListener("supportpilot_users_changed", handleUsersChange);
+    window.addEventListener("supportpilot_user_deleted", handleUsersChange);
+    return () => {
+      window.removeEventListener("supportpilot_users_changed", handleUsersChange);
+      window.removeEventListener("supportpilot_user_deleted", handleUsersChange);
+    };
+  }, []);
+
+  const handleChange = (event) => {
+    const { name, value } = event.target;
+    setForm((current) => ({ ...current, [name]: value }));
+  };
+
+  const resetForm = () => {
+    setForm(emptyForm);
+    setEditingId(null);
+    setShowForm(false);
+  };
+
+  const handleSaveUser = (event) => {
+    event.preventDefault();
+
+    const name = form.name.trim();
+    const email = form.email.trim();
+
+    if (!name || !email) return;
+
+    const nextUser = {
+      id: editingId || `USR-${String(users.length + 1).padStart(3, "0")}`,
+      name,
+      email,
+      department: form.department || "IT Department",
+      role: form.role || "Agent",
+      team: form.team || form.department || "Support",
+      status: form.status || "Active",
+      availabilityStatus: "AVAILABLE",
+    };
+
+    let updatedUsers = [];
+    if (editingId) {
+      updatedUsers = users.map((user) => (user.id === editingId ? nextUser : user));
+    } else {
+      updatedUsers = [nextUser, ...users];
+    }
+
+    setUsers(updatedUsers);
+    storage.set(STORAGE_KEYS.users, updatedUsers);
+    window.dispatchEvent(new CustomEvent("supportpilot_users_changed", { detail: updatedUsers }));
+    resetForm();
+  };
+
+  const handleEditUser = (user) => {
+    setEditingId(user.id);
+    setForm({
+      name: user.name,
+      email: user.email,
+      department: user.department,
+      role: user.role,
+      team: user.team,
+      status: user.status,
+    });
+    setShowForm(true);
+  };
+
+  const handleDeleteUser = async (userOrId) => {
+    const target = typeof userOrId === "object" && userOrId !== null
+      ? userOrId
+      : users.find((u) => u.id === userOrId);
+
+    if (!target) return;
+
+    const displayName = target.name || target.email;
+    const confirmDelete = window.confirm(
+      `Are you sure you want to permanently delete "${displayName}"?\n\n` +
+      `This will completely remove them across all areas:\n` +
+      `• Removed from All Users list\n` +
+      `• Removed from Agent Directory & Switcher\n` +
+      `• Removed from Manager Queues & Assignments\n` +
+      `• Removed from Auto-Assignment Pools\n` +
+      `• Any active tickets assigned to them will be safely reset to Unassigned.`
+    );
+
+    if (!confirmDelete) return;
+
+    try {
+      await deleteUserEverywhere(target);
+      setUsers((current) => current.filter((u) => u.id !== target.id && u.email?.toLowerCase() !== target.email?.toLowerCase()));
+      setDeleteToast(`User "${displayName}" permanently deleted from all directories, queues, and assignments.`);
+      setTimeout(() => setDeleteToast(null), 5000);
+    } catch (err) {
+      console.error("Error deleting user:", err);
+      setDeleteToast(`Error deleting user: ${err.message}`);
+    }
+  };
+
+  const totalUsers = users.length;
+  const adminCount = users.filter((u) => u.role?.toLowerCase() === "admin").length;
+  const managerCount = users.filter((u) => ["manager", "support manager"].includes(u.role?.toLowerCase())).length;
+  const agentCount = users.filter((u) => u.role?.toLowerCase() === "agent").length;
+  const employeeCount = totalUsers - adminCount - managerCount - agentCount;
+
+  const filteredUsers = users.filter((u) => {
+    const roleLower = String(u.role || "").toLowerCase();
+    if (roleFilter === "ADMIN" && roleLower !== "admin") return false;
+    if (roleFilter === "MANAGER" && !["manager", "support manager"].includes(roleLower)) return false;
+    if (roleFilter === "AGENT" && roleLower !== "agent") return false;
+    if (roleFilter === "EMPLOYEE" && (roleLower === "admin" || roleLower === "manager" || roleLower === "agent")) return false;
+
+    if (searchTerm.trim()) {
+      const q = searchTerm.toLowerCase();
+      const matchName = String(u.name || "").toLowerCase().includes(q);
+      const matchEmail = String(u.email || "").toLowerCase().includes(q);
+      const matchDept = String(u.department || "").toLowerCase().includes(q);
+      const matchTeam = String(u.team || "").toLowerCase().includes(q);
+      return matchName || matchEmail || matchDept || matchTeam;
+    }
+    return true;
+  });
+
+  const roleBadges = {
+    Admin: "bg-purple-50 text-purple-800 border border-purple-200",
+    Manager: "bg-indigo-50 text-indigo-800 border border-indigo-200",
+    "Support Manager": "bg-indigo-50 text-indigo-800 border border-indigo-200",
+    Agent: "bg-blue-50 text-blue-800 border border-blue-200",
+    Employee: "bg-slate-50 text-slate-700 border border-slate-200",
+    Customer: "bg-slate-50 text-slate-700 border border-slate-200",
+  };
+
+  return (
+    <div className="space-y-6">
+      {deleteToast && (
+        <div className="rounded-xl bg-emerald-50 border border-emerald-300 p-3.5 text-xs font-bold text-emerald-800 flex items-center justify-between shadow-xs animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <FiCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{deleteToast}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setDeleteToast(null)}
+            className="text-emerald-700 hover:text-emerald-950 p-1 cursor-pointer"
+          >
+            <FiX className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Breadcrumbs & Header */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+            Admin / Users
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+            Users
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Manage system users and Role-Based Access Control (RBAC).
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            if (showForm) resetForm();
+            else setShowForm(true);
+          }}
+          className="sp-btn sp-btn-primary px-5 py-2.5 font-bold shadow-sm text-xs cursor-pointer active:scale-95 transition flex items-center gap-1.5"
+        >
+          {showForm ? (
+            <>
+              <FiX className="w-3.5 h-3.5" />
+              <span>Close Form</span>
+            </>
+          ) : (
+            <>
+              <FiPlus className="w-3.5 h-3.5" />
+              <span>Add User</span>
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* Metrics Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4">
+        <div className="bg-white rounded-2xl p-4 border border-[#dfe5e1] shadow-2xs">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Users</span>
+          <p className="text-2xl font-extrabold text-slate-900 mt-1">{totalUsers}</p>
+        </div>
+        <div className="bg-white rounded-2xl p-4 border border-[#dfe5e1] shadow-2xs">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-purple-600">Admins</span>
+          <p className="text-2xl font-extrabold text-purple-900 mt-1">{adminCount}</p>
+        </div>
+        <div className="bg-white rounded-2xl p-4 border border-[#dfe5e1] shadow-2xs">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-600">Managers</span>
+          <p className="text-2xl font-extrabold text-indigo-900 mt-1">{managerCount}</p>
+        </div>
+        <div className="bg-white rounded-2xl p-4 border border-[#dfe5e1] shadow-2xs">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-blue-600">Agents</span>
+          <p className="text-2xl font-extrabold text-blue-900 mt-1">{agentCount}</p>
+        </div>
+        <div className="bg-white rounded-2xl p-4 border border-[#dfe5e1] shadow-2xs">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-600">Employees</span>
+          <p className="text-2xl font-extrabold text-emerald-900 mt-1">{employeeCount}</p>
+        </div>
+      </div>
+
+      {/* Add / Edit Form Modal / Box */}
+      {showForm && (
+        <form onSubmit={handleSaveUser} className="rounded-2xl border border-[#dfe5e1] bg-white p-6 shadow-sm">
+          <h2 className="text-sm font-bold text-slate-900 mb-4">
+            {editingId ? "Edit User Details" : "Create New User"}
+          </h2>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-gray-700">Name</span>
+              <input name="name" value={form.name} onChange={handleChange} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-emerald-500 transition" placeholder="John Doe" required />
+            </label>
+
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-gray-700">Email</span>
+              <input name="email" type="email" value={form.email} onChange={handleChange} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-emerald-500 transition" placeholder="john@example.com" required />
+            </label>
+
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-gray-700">Department</span>
+              <input name="department" value={form.department} onChange={handleChange} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-emerald-500 transition" placeholder="IT Support" />
+            </label>
+
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-gray-700">Role</span>
+              <select name="role" value={form.role} onChange={handleChange} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-emerald-500 transition bg-white">
+                <option value="Admin">Admin</option>
+                <option value="Manager">Manager</option>
+                <option value="Agent">Agent</option>
+                <option value="Employee">Employee</option>
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-gray-700">Team</span>
+              <input name="team" value={form.team} onChange={handleChange} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-emerald-500 transition" placeholder="Support" />
+            </label>
+
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-gray-700">Status</span>
+              <select name="status" value={form.status} onChange={handleChange} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-emerald-500 transition bg-white">
+                <option value="Active">Active</option>
+                <option value="Inactive">Inactive</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="mt-5 flex justify-end gap-3 pt-3 border-t border-slate-100">
+            <button type="button" onClick={resetForm} className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition cursor-pointer">Cancel</button>
+            <button type="submit" className="rounded-xl bg-blue-600 hover:bg-blue-700 px-5 py-2 text-xs font-bold text-white transition shadow-sm cursor-pointer">{editingId ? "Update User" : "Save User"}</button>
+          </div>
+        </form>
+      )}
+
+      {/* Search & Filter Controls */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
+        <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
+          {[
+            { id: "ALL", label: "All Users", count: totalUsers },
+            { id: "AGENT", label: "Agents", count: agentCount },
+            { id: "MANAGER", label: "Managers", count: managerCount },
+            { id: "ADMIN", label: "Admins", count: adminCount },
+            { id: "EMPLOYEE", label: "Employees", count: employeeCount },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setRoleFilter(tab.id)}
+              className={`py-1.5 px-3 rounded-xl text-xs font-bold transition cursor-pointer ${
+                roleFilter === tab.id
+                  ? "bg-blue-600 text-white shadow-xs"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              {tab.label} <span className="text-[10px] opacity-80">({tab.count})</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="w-full sm:w-72">
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search by name, email, dept..."
+            className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-xs outline-none focus:border-blue-500 transition"
+          />
+        </div>
+      </div>
+
+      {/* Users Table */}
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xs">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <th className="py-3.5 px-4 text-xs font-bold uppercase tracking-wider text-slate-700">User</th>
+                <th className="py-3.5 px-4 text-xs font-bold uppercase tracking-wider text-slate-700">Department</th>
+                <th className="py-3.5 px-4 text-xs font-bold uppercase tracking-wider text-slate-700">Role</th>
+                <th className="py-3.5 px-4 text-xs font-bold uppercase tracking-wider text-slate-700">Team</th>
+                <th className="py-3.5 px-4 text-xs font-bold uppercase tracking-wider text-slate-700">Status</th>
+                <th className="py-3.5 px-4 text-xs font-bold uppercase tracking-wider text-slate-700 text-right">Action</th>
+              </tr>
+            </thead>
+
+            <tbody className="divide-y divide-slate-100 text-xs">
+              {filteredUsers.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-slate-400">
+                    No users matching criteria.
+                  </td>
+                </tr>
+              ) : (
+                filteredUsers.map((user) => (
+                <tr
+                  key={user.id}
+                  onClick={() => setInspectingUser(user)}
+                  className="hover:bg-blue-50/40 transition-colors cursor-pointer group"
+                >
+                  <td className="py-3.5 px-4">
+                    <p className="font-bold text-slate-900 group-hover:text-blue-600 transition text-[13px]">{user.name}</p>
+                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">{user.email}</p>
+                  </td>
+                  <td className="py-3.5 px-4 font-medium text-slate-700">{user.department || "IT Support"}</td>
+                  <td className="py-3.5 px-4">
+                    <span className={`inline-block rounded-full px-2.5 py-0.5 text-[11px] font-bold ${roleBadges[user.role] || "bg-slate-100 text-slate-700 border border-slate-200"}`}>
+                      {user.role}
+                    </span>
+                  </td>
+                  <td className="py-3.5 px-4 text-slate-600 font-medium">{user.team || "Support"}</td>
+                  <td className="py-3.5 px-4">
+                    <span className="inline-flex items-center gap-1.5 text-emerald-700 font-bold text-[11px]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      {user.status || "Active"}
+                    </span>
+                  </td>
+                  <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                    <div className="inline-flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setInspectingUser(user)}
+                        className="font-bold text-blue-600 hover:text-blue-800 cursor-pointer"
+                      >
+                        Details
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleEditUser(user)}
+                        className="font-bold text-slate-600 hover:text-slate-900 cursor-pointer"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteUser(user)}
+                        className="font-bold text-red-600 hover:text-red-800 cursor-pointer"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* PROFESSIONAL AGENT / USER DETAILS DRAWER */}
+      <AgentDetailsDrawer
+        agent={inspectingUser}
+        isOpen={Boolean(inspectingUser)}
+        onClose={() => setInspectingUser(null)}
+        onTicketAssigned={() => loadAllUsers()}
+        onStatusChanged={() => loadAllUsers()}
+      />
+    </div>
+  );
+}
